@@ -1,6 +1,6 @@
 {
 	"name": "create-tatara",
-	"version": "0.13.1",
+	"version": "0.13.2",
 	"description": "Create a new Tatara app: npm create tatara my-app",
 	"type": "module",
 	"license": "MIT",
