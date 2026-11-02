@@ -1,5 +1,11 @@
 # @tatara/http
 
+## 0.1.3
+
+### Patch Changes
+
+- 61d535a: `createApp({ cors: { allowOrigin } })`: a check for origins not in `origins`, for ones kept in the database (a game's web build address).
+
 ## 0.1.2
 
 ### Patch Changes
