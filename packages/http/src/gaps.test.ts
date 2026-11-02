@@ -145,33 +145,11 @@ describe("CORS origins", () => {
 		expect(() => corsOrigin(["https://*.*.example.com"])).toThrow(/must look like/);
 	});
 
-	it("also allows origins an allowOrigin check accepts, such as ones kept in the database", async () => {
-		const asked: string[] = [];
-		const dynamic = app({
-			cors: {
-				origins: ["https://web.example"],
-				allowOrigin: async (origin) => {
-					asked.push(origin);
-					return origin === "https://game.example";
-				},
-			},
-		});
-		const preflight = (origin: string) =>
-			dynamic.request("/health", {
-				method: "OPTIONS",
-				headers: { origin, "access-control-request-method": "POST" },
-			});
-		expect(
-			(await preflight("https://game.example")).headers.get("access-control-allow-origin"),
-		).toBe("https://game.example");
-		expect(
-			(await preflight("https://evil.example")).headers.get("access-control-allow-origin"),
-		).toBeNull();
-		// a listed origin doesn't need the check
-		expect(
-			(await preflight("https://web.example")).headers.get("access-control-allow-origin"),
-		).toBe("https://web.example");
-		expect(asked).toEqual(["https://game.example", "https://evil.example"]);
+	it("adds no CORS without the cors option: the app uses Hono's cors() itself", async () => {
+		const plain = createApp<HttpEnv>({ logger, bodyLimitBytes: 1024 });
+		plain.get("/x", (c) => c.text("x"));
+		const res = await plain.request("/x", { headers: { origin: "https://web.example" } });
+		expect(res.headers.get("access-control-allow-origin")).toBeNull();
 	});
 
 	it("answers preflights for a pattern-matched origin", async () => {

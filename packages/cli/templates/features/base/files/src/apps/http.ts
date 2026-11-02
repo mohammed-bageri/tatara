@@ -1,4 +1,5 @@
-import { createApp, handleErrors, mountRoutes, serveOpenApi } from "@tatara/http";
+import { corsOrigin, createApp, handleErrors, mountRoutes, serveOpenApi } from "@tatara/http";
+import { cors } from "hono/cors";
 import { env } from "#core/config/env";
 import type { AppEnv } from "#core/http/context";
 import type { AppName } from "#core/http/routes";
@@ -12,13 +13,6 @@ export const API_PREFIX = "/api";
 export function createHttpApp(name: AppName, options: { title: string }) {
 	const app = createApp<AppEnv>({
 		logger,
-		cors: {
-			origins: env.CORS_ORIGINS,
-			exposeHeaders: [
-				"X-Request-Id",
-				// tatara:slot expose-headers
-			],
-		},
 		bodyLimitBytes: env.BODY_LIMIT_BYTES,
 		timeouts: {
 			defaultMs: env.REQUEST_TIMEOUT_MS,
@@ -28,6 +22,25 @@ export function createHttpApp(name: AppName, options: { title: string }) {
 		},
 		defaults: { principal: null, language: "en" },
 	});
+	// browsers on other origins (Hono's own middleware); corsOrigin matches exact origins and
+	// one-label patterns like https://*.example.com
+	app.use(
+		cors({
+			origin: corsOrigin(env.CORS_ORIGINS),
+			credentials: true,
+			allowHeaders: [
+				"Content-Type",
+				"Authorization",
+				"X-Request-Id",
+				"Accept-Language",
+				// tatara:slot allow-headers
+			],
+			exposeHeaders: [
+				"X-Request-Id",
+				// tatara:slot expose-headers
+			],
+		}),
+	);
 	// tatara:slot middleware
 
 	// tatara:slot routes

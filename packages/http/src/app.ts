@@ -43,17 +43,11 @@ export function requestContext<E extends HttpEnv>(logger: CoreLogger, defaults: 
 
 export interface CreateAppOptions<E extends HttpEnv> {
 	logger: CoreLogger;
-	/** origins are exact (`https://app.example.com`) or one-label patterns (`https://*.example.com`) */
-	cors: {
-		origins: string[];
-		/**
-		 * For origins not in `origins`: true allows it. For origins kept in the database, such as a
-		 * game's web build address; cache the lookup, since it runs on cross-origin requests.
-		 */
-		allowOrigin?: (origin: string) => boolean | Promise<boolean>;
-		exposeHeaders?: string[];
-		allowHeaders?: string[];
-	};
+	/**
+	 * Deprecated: call Hono's `cors()` in the app instead (with `corsOrigin` for the origin check),
+	 * so its headers and origins are the app's. Kept so existing apps keep working.
+	 */
+	cors?: { origins: string[]; exposeHeaders?: string[]; allowHeaders?: string[] };
 	bodyLimitBytes: number;
 	/** a limit on how long a handler may take, with longer ones for slow paths */
 	timeouts?: TimeoutOptions;
@@ -75,32 +69,25 @@ export function corsOrigin(origins: string[]): (origin: string) => string | null
 	return (origin) => (exact.has(origin) || patterns.some((p) => p.test(origin)) ? origin : null);
 }
 
-function allowedOrigin(
-	listed: (origin: string) => string | null,
-	check?: (origin: string) => boolean | Promise<boolean>,
-): (origin: string) => Promise<string | null> {
-	return async (origin) =>
-		listed(origin) ?? (origin && check && (await check(origin)) ? origin : null);
-}
-
-/** A plain OpenAPIHono app with request context, secure headers, CORS, body limit, /health and /ready. */
+/** A plain OpenAPIHono app with request context, secure headers, body limit, /health and /ready. CORS is the app's: Hono's `cors()`. */
 export function createApp<E extends HttpEnv>(options: CreateAppOptions<E>): OpenAPIHono<E> {
 	const app = new OpenAPIHono<E>({ defaultHook: validationHook });
 	app.use(requestContext<E>(options.logger, options.defaults) as MiddlewareHandler<E>);
 	app.use(secureHeaders());
-	app.use(
-		cors({
-			origin: allowedOrigin(corsOrigin(options.cors.origins), options.cors.allowOrigin),
-			credentials: true,
-			allowHeaders: options.cors.allowHeaders ?? [
-				"Content-Type",
-				"Authorization",
-				"X-Request-Id",
-				"Accept-Language",
-			],
-			exposeHeaders: options.cors.exposeHeaders ?? ["X-Request-Id"],
-		}),
-	);
+	if (options.cors)
+		app.use(
+			cors({
+				origin: corsOrigin(options.cors.origins),
+				credentials: true,
+				allowHeaders: options.cors.allowHeaders ?? [
+					"Content-Type",
+					"Authorization",
+					"X-Request-Id",
+					"Accept-Language",
+				],
+				exposeHeaders: options.cors.exposeHeaders ?? ["X-Request-Id"],
+			}),
+		);
 	app.use(bodyLimit({ maxSize: options.bodyLimitBytes }));
 	if (options.timeouts) app.use(requestTimeout(options.timeouts));
 	app.get("/health", (c) => c.json({ status: "ok" }));
