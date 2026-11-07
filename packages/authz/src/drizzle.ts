@@ -1,5 +1,5 @@
 import { newId } from "@tatara/db";
-import { and, count, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
 import type { OverlayEffect, Scope } from "./constants.ts";
 import { SYSTEM_ORG_ID } from "./constants.ts";
 import type { AuditRow, AuthzStore, OverlayRow, PermissionGrant, RoleRow } from "./types.ts";
@@ -248,6 +248,69 @@ export function drizzleAuthzStore(db: any, tables: DrizzleAuthzTables): AuthzSto
 			return true;
 		},
 
+		async replaceMemberRoles(orgId, userId, add, remove, by) {
+			// biome-ignore lint/suspicious/noExplicitAny: the app's pg or mysql transaction
+			await db.transaction(async (tx: any) => {
+				if (remove.length > 0)
+					await tx
+						.delete(authzMemberRoles)
+						.where(
+							and(
+								eq(authzMemberRoles.orgId, orgId),
+								eq(authzMemberRoles.userId, userId),
+								inArray(authzMemberRoles.roleId, remove),
+							),
+						);
+				if (add.length > 0)
+					await tx
+						.insert(authzMemberRoles)
+						.values(add.map((roleId) => ({ id: newId(), orgId, userId, roleId, assignedBy: by })));
+			});
+		},
+
+		async permissionHolders(orgId, resource, action, now, executor) {
+			const exec = executor ?? db;
+			const [assignments, overlays] = await Promise.all([
+				exec
+					.select({ userId: authzMemberRoles.userId, scope: authzRolePermissions.scope })
+					.from(authzMemberRoles)
+					.innerJoin(authzRolePermissions, eq(authzRolePermissions.roleId, authzMemberRoles.roleId))
+					.where(
+						and(
+							eq(authzMemberRoles.orgId, orgId),
+							eq(authzRolePermissions.resource, resource),
+							eq(authzRolePermissions.action, action),
+						),
+					),
+				exec
+					.select({
+						userId: authzOverlays.userId,
+						scope: authzOverlays.scope,
+						effect: authzOverlays.effect,
+					})
+					.from(authzOverlays)
+					.where(
+						and(
+							eq(authzOverlays.orgId, orgId),
+							eq(authzOverlays.resource, resource),
+							eq(authzOverlays.action, action),
+							or(isNull(authzOverlays.expiresAt), gt(authzOverlays.expiresAt, now)),
+						),
+					),
+			]);
+			return {
+				assignments: assignments.map((a: { userId: string; scope: string }) => ({
+					userId: a.userId,
+					scope: toScope(a.scope),
+				})),
+				overlays: overlays.map((o: { userId: string; scope: string; effect: OverlayEffect }) => ({
+					userId: o.userId,
+					scope: toScope(o.scope),
+					effect: o.effect,
+				})),
+			};
+		},
+
 		async removeMember(orgId, userId) {
 			const roleWhere = and(eq(authzMemberRoles.orgId, orgId), eq(authzMemberRoles.userId, userId));
 			const overlayWhere = and(eq(authzOverlays.orgId, orgId), eq(authzOverlays.userId, userId));
@@ -314,12 +377,22 @@ export function drizzleAuthzStore(db: any, tables: DrizzleAuthzTables): AuthzSto
 			});
 		},
 
-		async listAudit(orgId, limit) {
+		async listAudit(orgId, limit, before) {
 			const rows = await db
 				.select()
 				.from(authzAuditLog)
-				.where(eq(authzAuditLog.orgId, orgId))
-				.orderBy(desc(authzAuditLog.id))
+				.where(
+					and(
+						eq(authzAuditLog.orgId, orgId),
+						before
+							? or(
+									lt(authzAuditLog.at, before.at),
+									and(eq(authzAuditLog.at, before.at), lt(authzAuditLog.id, before.id)),
+								)
+							: undefined,
+					),
+				)
+				.orderBy(desc(authzAuditLog.at), desc(authzAuditLog.id))
 				.limit(limit);
 			return rows.map((r: AuditRecord) => ({
 				...r,

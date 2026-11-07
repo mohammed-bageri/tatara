@@ -95,6 +95,37 @@ export function memoryAuthzStore(): AuthzStore {
 			members.splice(index, 1);
 			return true;
 		},
+		async replaceMemberRoles(orgId, userId, add, remove, _by) {
+			for (let i = members.length - 1; i >= 0; i--) {
+				const m = members[i];
+				if (m?.orgId === orgId && m.userId === userId && remove.includes(m.roleId))
+					members.splice(i, 1);
+			}
+			for (const roleId of add) {
+				if (!members.some((m) => m.orgId === orgId && m.userId === userId && m.roleId === roleId))
+					members.push({ orgId, userId, roleId });
+			}
+		},
+		async permissionHolders(orgId, resource, action, now) {
+			const assignments = members
+				.filter((m) => m.orgId === orgId)
+				.flatMap((m) => {
+					const role = roles.find((r) => r.id === m.roleId);
+					return (role?.grants ?? [])
+						.filter((g) => g.resource === resource && g.action === action)
+						.map((g) => ({ userId: m.userId, scope: g.scope }));
+				});
+			const live = overlays
+				.filter(
+					(o) =>
+						o.orgId === orgId &&
+						o.resource === resource &&
+						o.action === action &&
+						(!o.expiresAt || o.expiresAt > now),
+				)
+				.map((o) => ({ userId: o.userId, scope: o.scope, effect: o.effect }));
+			return { assignments, overlays: live };
+		},
 		async removeMember(orgId, userId) {
 			const before = { roles: members.length, overlays: overlays.length };
 			for (let i = members.length - 1; i >= 0; i--) {
@@ -140,10 +171,18 @@ export function memoryAuthzStore(): AuthzStore {
 		async writeAudit(input) {
 			audit.push({ ...input, id: id(), at: new Date() });
 		},
-		async listAudit(orgId, limit) {
+		async listAudit(orgId, limit, before) {
+			const newestFirst = (a: AuditRow, b: AuditRow) =>
+				b.at.getTime() - a.at.getTime() || b.id.localeCompare(a.id);
 			return audit
-				.filter((a) => a.orgId === orgId)
-				.sort((a, b) => b.id.localeCompare(a.id))
+				.filter(
+					(a) =>
+						a.orgId === orgId &&
+						(!before ||
+							a.at.getTime() < before.at.getTime() ||
+							(a.at.getTime() === before.at.getTime() && a.id.localeCompare(before.id) < 0)),
+				)
+				.sort(newestFirst)
 				.slice(0, limit);
 		},
 	};

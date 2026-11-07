@@ -8,16 +8,17 @@ import { createAuthz, definePermissions, mergeCatalogs } from "./index.ts";
 import { memoryAuthzStore } from "./testing.ts";
 
 const members = definePermissions({
-	resources: { people: { list: { scoped: false } } },
-	roleGrants: { admin: [["people", "list"]] },
+	resources: { people: { list: { scoped: false }, review: { scoped: false } } },
+	roleGrants: { admin: [["people", "list"]], reviewer: [["people", "review"]] },
 });
 const SYSTEM_ROLES = [
 	{ key: "admin", name: "Admin", description: "Full access" },
 	{ key: "member", name: "Member", description: "Everyone", heldBy: "members" },
+	{ key: "reviewer", name: "Reviewer", description: "Reviews people" },
 ] as const;
 
-function setup() {
-	const authz = createAuthz<"people:list">({
+function setup(pluginOptions: { creatorRole?: string | readonly string[] | false } = {}) {
+	const authz = createAuthz<"people:list" | "people:review">({
 		store: memoryAuthzStore(),
 		catalog: mergeCatalogs(members),
 		systemRoles: SYSTEM_ROLES,
@@ -38,7 +39,10 @@ function setup() {
 		plugins: [
 			bearer(),
 			organization(),
-			authzPlugin(authz, { endpoints: { "/organization/list-members": "people:list" } }),
+			authzPlugin(authz, {
+				...pluginOptions,
+				endpoints: { "/organization/list-members": "people:list" },
+			}),
 		],
 	});
 	const call = async (path: string, headers: Record<string, string>, body?: unknown) => {
@@ -84,6 +88,14 @@ const asMember = (userId: string, orgId: string) => ({
 });
 
 describe("authzPlugin", () => {
+	it("gives an org's creator every creatorRole when there are several", async () => {
+		t = setup({ creatorRole: ["admin", "reviewer"] });
+		const { orgId, owner, member } = await orgWithMember();
+		expect(await t.authz.checkPermission(asMember(owner.id, orgId), "people:list")).toBe(true);
+		expect(await t.authz.checkPermission(asMember(owner.id, orgId), "people:review")).toBe(true);
+		expect(await t.authz.checkPermission(asMember(member.id, orgId), "people:review")).toBe(false);
+	});
+
 	it("makes an org's creator its admin", async () => {
 		const { orgId, owner, member } = await orgWithMember();
 		expect(await t.authz.checkPermission(asMember(owner.id, orgId), "people:list")).toBe(true);

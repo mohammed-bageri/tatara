@@ -21,6 +21,7 @@ import {
 	SYSTEM_ORG_ID,
 } from "./constants.ts";
 import {
+	type AuditCursor,
 	type AuthzStore,
 	type EffectivePermissions,
 	grantKey,
@@ -76,6 +77,16 @@ export interface AuthzOptions {
 	 * 400 ORG_REQUIRED; nothing falls back to a default org.
 	 */
 	singleTenant?: string;
+	/**
+	 * Whether a user may hold roles in an org at all, checked by `setMemberRoles` and
+	 * `addRolesToMembers`: return a reason to refuse (e.g. "Candidates cannot hold org roles").
+	 */
+	canHoldRoles?: (orgId: string, userId: string) => Promise<string | null> | string | null;
+	/**
+	 * The org's members, for `listUsersWithPermission` when a built-in role held by every member
+	 * (`heldBy: "members"`) grants the permission; authz has no member list of its own.
+	 */
+	listMembers?: (orgId: string, executor?: unknown) => Promise<string[]>;
 }
 
 export interface RoleInput {
@@ -275,8 +286,9 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		});
 	}
 
-	function listAudit(orgId: string, limit = 50) {
-		return store.listAudit(orgId, limit);
+	/** Newest first; pass the last entry of a page as `before` for the next one. */
+	function listAudit(orgId: string, limit = 50, before?: AuditCursor) {
+		return store.listAudit(orgId, limit, before);
 	}
 
 	function listRoles(orgId: string): Promise<RoleRow[]> {
@@ -457,10 +469,165 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		});
 	}
 
-	/** Creates or updates every built-in role so its grants match the code. Idempotent. */
-	async function syncSystemRoles(): Promise<{ created: string[]; updated: string[] }> {
+	/** Refuses a role id that is neither built-in nor this org's own. */
+	async function rolesInOrg(orgId: string, roleIds: string[]): Promise<RoleRow[]> {
+		const roles = await Promise.all(roleIds.map((id) => store.findRole(orgId, id)));
+		if (roles.some((r) => r === null))
+			throw new ForbiddenError("One or more roles are unknown or belong to another organization");
+		return roles as RoleRow[];
+	}
+
+	async function refuseUnfitHolder(orgId: string, userId: string) {
+		const reason = await options.canHoldRoles?.(orgId, userId);
+		if (reason) throw new ForbiddenError(reason);
+	}
+
+	/**
+	 * Replaces a member's assigned roles with `roleIds`, writing (and auditing) only the
+	 * difference, in one step. Returns the member as `getMember` does.
+	 */
+	async function setMemberRoles(actorId: string, orgId: string, userId: string, roleIds: string[]) {
+		const wanted = [...new Set(roleIds)];
+		await refuseUnfitHolder(orgId, userId);
+		await rolesInOrg(orgId, wanted);
+		const current = (await store.memberRoles(orgId, userId)).map((r) => r.id);
+		const add = wanted.filter((id) => !current.includes(id));
+		const remove = current.filter((id) => !wanted.includes(id));
+		if (add.length || remove.length) {
+			await store.replaceMemberRoles(orgId, userId, add, remove, actorId);
+			await cache.invalidateMember(userId, orgId);
+			await audit({
+				orgId,
+				actorId,
+				targetUserId: userId,
+				changeType: add.length ? "member_role_assigned" : "member_role_revoked",
+				before: { roleIds: current },
+				after: { roleIds: wanted },
+			});
+		}
+		return getMember(orgId, userId);
+	}
+
+	/** Adds roles to many members; one that cannot take them is skipped with the reason. */
+	async function addRolesToMembers(
+		actorId: string,
+		orgId: string,
+		userIds: string[],
+		roleIds: string[],
+	): Promise<{ updated: number; skipped: { userId: string; reason: string }[] }> {
+		const result = { updated: 0, skipped: [] as { userId: string; reason: string }[] };
+		const roles = [...new Set(roleIds)];
+		if (roles.length === 0 || userIds.length === 0) return result;
+		// a bad role id fails the whole batch, before anyone changes
+		await rolesInOrg(orgId, roles);
+		for (const userId of new Set(userIds)) {
+			try {
+				const current = (await store.memberRoles(orgId, userId)).map((r) => r.id);
+				await setMemberRoles(actorId, orgId, userId, [...current, ...roles]);
+				result.updated++;
+			} catch (error) {
+				result.skipped.push({ userId, reason: error instanceof Error ? error.message : "unknown" });
+			}
+		}
+		return result;
+	}
+
+	/** A custom copy of a role (built-in or custom) under a new key. */
+	async function duplicateRole(
+		actorId: string,
+		orgId: string,
+		roleId: string,
+		input: Omit<RoleInput, "grants">,
+	): Promise<RoleRow> {
+		const [source] = await rolesInOrg(orgId, [roleId]);
+		if (!source) throw new NotFoundError("Role");
+		const role = await createRole(actorId, orgId, {
+			...input,
+			// meta resources are never custom grants, even when a built-in role holds them
+			grants: source.grants.filter((g) => !META_RESOURCES.has(g.resource)),
+		});
+		await audit({
+			orgId,
+			actorId,
+			changeType: "role_duplicated",
+			before: { roleId: source.id, key: source.key },
+			after: { roleId: role.id, key: role.key },
+		});
+		return role;
+	}
+
+	/**
+	 * Every user for whom `checkPermission` would pass in the org, read from the store at decision
+	 * time (no cache). `executor` is the caller's transaction, so it sees its own writes. Roles
+	 * held through the identity provider (`heldBy: "identity"`) cannot be listed.
+	 */
+	async function listUsersWithPermission(
+		orgId: string,
+		permission: K,
+		scope?: Scope,
+		listOptions: { executor?: unknown } = {},
+	): Promise<string[]> {
+		const [resource = "", action = ""] = permission.split(":");
+		const now = new Date();
+		const holders = await store.permissionHolders(
+			orgId,
+			resource,
+			action,
+			now,
+			listOptions.executor,
+		);
+		const grantsBy = (keys: Iterable<string>) =>
+			[...keys].flatMap((key) =>
+				(catalog.roleGrants[key] ?? [])
+					.filter(([r, a]) => r === resource && a === action)
+					.map(([, , s]) => ({ resource, action, scope: s ?? null })),
+			);
+		if (grantsBy(byIdentity).length > 0 && grantsBy(byMembers).length === 0)
+			throw new Error(
+				`${permission} is held through identity-provider roles, which cannot be listed`,
+			);
+		const implied = grantsBy(byMembers);
+		const perUser = new Map<string, EffectivePermissions>();
+		const of = (userId: string) => {
+			let eff = perUser.get(userId);
+			if (!eff) {
+				eff = { grants: [], denies: new Set(), roles: [] };
+				perUser.set(userId, eff);
+			}
+			return eff;
+		};
+		if (implied.length > 0) {
+			if (!options.listMembers)
+				throw new Error(
+					`${permission} is granted to every member: createAuthz needs listMembers to list them`,
+				);
+			for (const userId of await options.listMembers(orgId, listOptions.executor))
+				of(userId).grants.push(...implied);
+		}
+		for (const a of holders.assignments)
+			of(a.userId).grants.push({ resource, action, scope: a.scope });
+		for (const o of holders.overlays) {
+			const grant = { resource, action, scope: o.scope };
+			if (o.effect === "deny") of(o.userId).denies.add(grantKey(grant));
+			else of(o.userId).grants.push(grant);
+		}
+		return [...perUser.entries()]
+			.filter(([, eff]) => allows(eff, resource, action, scope))
+			.map(([userId]) => userId);
+	}
+
+	/**
+	 * Creates or updates every built-in role so its grants match the code, and deletes the
+	 * built-in roles the code no longer has (with their assignments). Idempotent.
+	 */
+	async function syncSystemRoles(): Promise<{
+		created: string[];
+		updated: string[];
+		deleted: string[];
+	}> {
 		const created: string[] = [];
 		const updated: string[] = [];
+		const deleted: string[] = [];
 		for (const meta of systemRoles) {
 			const grants = validateGrants(
 				(catalog.roleGrants[meta.key] ?? []).map(([resource, action, scope]) => ({
@@ -495,8 +662,13 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 				updated.push(meta.key);
 			}
 		}
-		if (created.length || updated.length) await cache.invalidateAll();
-		return { created, updated };
+		for (const stale of await store.listRoles(SYSTEM_ORG_ID)) {
+			if (!stale.isSystem || systemRoleKeys.has(stale.key)) continue;
+			await store.deleteRole(stale.id);
+			deleted.push(stale.key);
+		}
+		if (created.length || updated.length || deleted.length) await cache.invalidateAll();
+		return { created, updated, deleted };
 	}
 
 	return {
@@ -515,6 +687,10 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		updateRole,
 		deleteRole,
 		getMember,
+		setMemberRoles,
+		addRolesToMembers,
+		duplicateRole,
+		listUsersWithPermission,
 		assignRole,
 		grantSystemRole,
 		revokeRole,
