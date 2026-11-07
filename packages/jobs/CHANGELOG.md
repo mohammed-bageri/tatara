@@ -1,5 +1,11 @@
 # @tatara/jobs
 
+## 0.5.0
+
+### Minor Changes
+
+- bf19561: A job carries the id of the request that enqueued it: `enqueue(topic, data, { requestId })`, `ctx.requestId` in the consumer, and on the job's log lines. The Postgres driver adds a nullable `request_id` column to its table.
+
 ## 0.4.0
 
 ### Minor Changes
