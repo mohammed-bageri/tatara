@@ -1,5 +1,11 @@
 # @tatara/jobs
 
+## 0.5.1
+
+### Patch Changes
+
+- 5347a87: Schedules take an optional `description`, like consumers.
+
 ## 0.5.0
 
 ### Minor Changes
