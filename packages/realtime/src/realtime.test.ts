@@ -5,6 +5,7 @@ import { pino } from "pino";
 import { io as connect, type Socket } from "socket.io-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { realtimeCommands } from "./commands.ts";
 import {
 	type ChannelDefinition,
 	createRealtime,
@@ -543,12 +544,258 @@ describe("realtime", () => {
 		});
 		await realtime.attach(createServer());
 		await realtime.publishToUser("o1", "u1", "x", {});
+		expect(await realtime.health()).toEqual({ status: "disabled", driver: "noop" });
+		await realtime.close();
+		expect(realtime.metrics().eventsPublished).toBe(0);
+	});
+});
+
+/** connects, collecting what arrives from the first frame on, and resolves once closed */
+function connectAndWaitForClose(url: string, ticket: string) {
+	const socket = connect(url, {
+		path: "/realtime",
+		transports: ["websocket"],
+		auth: { ticket },
+		reconnection: false,
+	});
+	cleanups.push(() => socket.close());
+	const closedWith: unknown[] = [];
+	socket.on("rt:closed", (p) => closedWith.push(p));
+	return new Promise<{ closedWith: unknown[]; reason: string }>((resolve) =>
+		socket.on("disconnect", (reason) => resolve({ closedWith, reason })),
+	);
+}
+
+describe("realtime operations", () => {
+	it("closes a user's socket past the per-process cap with too_many_connections", async () => {
+		const served = await serve({ maxSocketsPerUser: 2 });
+		const who = { userId: "u1", orgId: "o1" };
+		const first = await socketOf(served, who);
+		await socketOf(served, who);
+		const third = await connectAndWaitForClose(
+			served.url,
+			(await served.realtime.issueTicket(who)).ticket,
+		);
+		expect(third.closedWith).toEqual([{ reason: "too_many_connections" }]);
+		expect(third.reason).toBe("io server disconnect");
+		// the cap is per user: another user, and the same user once a socket closed, still connect
+		await socketOf(served, { userId: "u2", orgId: "o1" });
+		first.close();
+		await settle();
+		await socketOf(served, who);
+		const counts = served.realtime.metrics();
+		expect(counts.connectionsRejected).toEqual({ too_many_connections: 1 });
+		expect(counts.connectionsOpen).toBe(3);
+	});
+
+	it("drops a socket that sends a frame over maxFrameBytes", async () => {
+		const big = "x".repeat(16 * 1024);
+		const small = await serve();
+		const socket = await socketOf(small, { userId: "u1", orgId: "o1" });
+		const dropped = new Promise((r) => socket.on("disconnect", r));
+		socket.emit("subscribe", big);
+		expect(await dropped).toBe("transport close");
+
+		const roomy = await serve({ maxFrameBytes: 64 * 1024 });
+		const ok = await socketOf(roomy, { userId: "u1", orgId: "o1" });
+		expect(await ok.emitWithAck("subscribe", big)).toMatchObject({ code: "CHANNEL_UNKNOWN" });
+	});
+
+	it("refuses a handshake without an Origin header only when requireOrigin is set", async () => {
+		const strict = await serve({ requireOrigin: true });
+		await expect(socketOf(strict, { userId: "u1", orgId: "o1" })).rejects.toThrow();
+		expect(strict.realtime.metrics().connectionsRejected).toEqual({ origin: 1 });
+		const lenient = await serve();
+		await socketOf(lenient, { userId: "u1", orgId: "o1" });
+	});
+
+	it("reports health: healthy attached, unhealthy with Redis down or once closed, disabled for noop", async () => {
+		const served = await serve();
+		await socketOf(served, { userId: "u1", orgId: "o1" });
+		expect(await served.realtime.health()).toEqual({
+			status: "healthy",
+			driver: "socketio",
+			adapter: "memory",
+			connections: 1,
+			detail: { attached: true, closed: false },
+		});
+		await served.realtime.close();
+		expect(await served.realtime.health()).toMatchObject({
+			status: "unhealthy",
+			error: "realtime is closed",
+		});
+
+		// a process that never attached and publishes through a Redis it can't reach
+		const detached = createRealtime({
+			driver: "socketio",
+			adapter: {
+				kind: "redis",
+				redis: () =>
+					new Redis("redis://127.0.0.1:1", {
+						lazyConnect: true,
+						enableOfflineQueue: false,
+						retryStrategy: () => null,
+					}),
+			},
+			tickets: memoryTickets(),
+			allowOrigin: () => true,
+			publishTimeoutMs: 100,
+			logger,
+		});
+		expect((await detached.health()).status).toBe("healthy");
+		await detached.publishToOrg("o1", "x", {});
+		expect(await detached.health()).toMatchObject({
+			status: "unhealthy",
+			detail: { attached: false, closed: false },
+			error: "redis connection is not ready",
+		});
+		expect(detached.metrics().publishFailures).toBe(1);
+		await detached.close();
+	});
+
+	it("close() closes the sockets but leaves the app's HTTP server serving, and is idempotent", async () => {
+		const realtime = createRealtime({
+			driver: "socketio",
+			adapter: { kind: "memory" },
+			tickets: memoryTickets(),
+			allowOrigin: () => true,
+			logger,
+		});
+		const server = createServer((_, res) => res.end("ok"));
+		await realtime.attach(server);
+		await new Promise<void>((r) => server.listen(0, r));
+		cleanups.push(() => new Promise((r) => server.close(r)));
+		const url = `http://localhost:${(server.address() as AddressInfo).port}`;
+		const socket = await socketFor(
+			url,
+			(await realtime.issueTicket({ userId: "u1", orgId: "o1" })).ticket,
+		);
+		const gone = new Promise((r) => socket.on("disconnect", r));
+
+		await realtime.close();
+		await gone;
+		await realtime.close();
+		expect(server.listening).toBe(true);
+		expect(await (await fetch(url)).text()).toBe("ok");
+		await expect(realtime.publishToOrg("o1", "x", {})).resolves.toBeUndefined();
+		const { ticket } = await realtime.issueTicket({ userId: "u1", orgId: "o1" });
+		await expect(socketFor(url, ticket)).rejects.toThrow();
+		// the HTTP server can now close: no socket holds it open
+		await new Promise((r) => server.close(r));
+	});
+
+	it("counts connections, subscribes by outcome, publishes and disconnects, on a meter too", async () => {
+		const recorded: [string, number, Record<string, string> | undefined][] = [];
+		const instrument = (name: string) => ({
+			add: (value: number, attributes?: Record<string, string>) =>
+				recorded.push([name, value, attributes]),
+		});
+		const served = await serve({
+			meter: { createCounter: instrument, createUpDownCounter: instrument },
+		});
+		await expect(socketFor(served.url, "rt_nope")).rejects.toThrow(/unauthorized/);
+		const socket = await socketOf(served, { userId: "u1", orgId: "o1" });
+		await socket.emitWithAck("subscribe", "survey.s1");
+		await socket.emitWithAck("subscribe", "nope.s1");
+		await served.realtime.publishToOrg("o1", "x", {});
+		await served.realtime.publishTo(survey, {
+			orgId: "o1",
+			params: { surveyId: "s1" },
+			event: "answer.created",
+			// @ts-expect-error the payload is checked against the channel's schema
+			payload: { answerId: 1 },
+		});
+		const closed = new Promise((r) => socket.on("disconnect", r));
+		await served.realtime.disconnectUser("o1", "u1", "logged_out");
+		await closed;
+		await settle();
+		expect(served.realtime.metrics()).toEqual({
+			connectionsOpen: 0,
+			connectionsOpened: 1,
+			connectionsRejected: { bad_ticket: 1 },
+			subscribesAllowed: 1,
+			subscribesDenied: { CHANNEL_UNKNOWN: 1 },
+			eventsPublished: 1,
+			publishFailures: 1,
+			disconnects: { logged_out: 1 },
+		});
+		expect(recorded).toEqual(
+			expect.arrayContaining([
+				["realtime.connections.rejected", 1, { reason: "bad_ticket" }],
+				["realtime.connections.current", -1, undefined],
+				["realtime.subscribes", 1, { outcome: "CHANNEL_UNKNOWN" }],
+				["realtime.events.published", 1, { outcome: "failed" }],
+				["realtime.disconnects", 1, { reason: "logged_out" }],
+			]),
+		);
+	});
+
+	it("lists the app's channels with realtime:channels", async () => {
+		const gated = defineChannel({
+			name: "billing.{accountId}",
+			description: "invoices",
+			permission: "billing:read",
+			feature: "billing",
+			events: { "invoice.paid": z.object({}), "invoice.created": z.object({}) },
+		});
+		const commands = realtimeCommands({
+			realtime: { publishToUser: async () => {} },
+			channels: [survey, gated],
+		});
+		const command = commands.find((c) => c.name === "realtime:channels");
+		const write = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+		try {
+			await command?.run({ json: true }, { logger });
+			expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual([
+				{
+					channel: "billing.{accountId}",
+					description: "invoices",
+					permission: "billing:read",
+					feature: "billing",
+					rowLevel: false,
+					events: ["invoice.created", "invoice.paid"],
+				},
+				{
+					channel: "survey.{surveyId}",
+					description: "live answers",
+					rowLevel: true,
+					events: ["answer.created"],
+				},
+			]);
+		} finally {
+			write.mockRestore();
+		}
+		const info = vi.fn();
+		await command?.run(
+			{ json: false },
+			{ logger: { ...logger, info } as unknown as typeof logger },
+		);
+		expect(info.mock.calls.map((c) => c[1])).toEqual([
+			"billing.{accountId}",
+			"survey.{surveyId}",
+			"realtime channels",
+		]);
 	});
 });
 
 const REDIS_URL = process.env.TATARA_TEST_REDIS_URL;
 
 describe.skipIf(!REDIS_URL)("realtime across processes (Redis)", { timeout: 20_000 }, () => {
+	it("is healthy with its Redis connections up, and close() quits them", async () => {
+		const clients: Redis[] = [];
+		const redis = () => {
+			const client = new Redis(REDIS_URL as string);
+			clients.push(client);
+			return client;
+		};
+		const served = await serve({ adapter: { kind: "redis", redis } });
+		await settle();
+		expect(await served.realtime.health()).toMatchObject({ status: "healthy", adapter: "redis" });
+		await served.realtime.close();
+		await settle();
+		expect(clients.map((c) => c.status)).toEqual(["end"]);
+	});
+
 	it("reaches sockets on every api process, published from a process with no sockets", async () => {
 		const tickets = memoryTickets();
 		const redis = () => {

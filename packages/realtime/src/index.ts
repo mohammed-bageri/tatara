@@ -19,9 +19,11 @@ export {
 	WIRE_CLOSED_EVENT,
 	WIRE_EVENT,
 } from "./channels.ts";
+export type { RealtimeMeter, RealtimeMetricsSnapshot, RejectReason } from "./metrics.ts";
 export {
 	createRealtime,
 	type Realtime,
+	type RealtimeHealth,
 	type RealtimeOptions,
 	type TicketStore,
 } from "./realtime.ts";
