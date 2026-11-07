@@ -29,9 +29,10 @@ describe("realtime", () => {
 			socket.on("connect", resolve);
 			socket.on("connect_error", reject);
 		});
-		const got = new Promise((r) => socket.once("hello", r));
+		// every event arrives as one "rt" envelope: { id, v, ch, ev, ts, data }
+		const got = new Promise((r) => socket.once("rt", r));
 		await publishToUser(user.orgId ?? "default", user.userId, "hello", { n: 1 });
-		expect(await got).toEqual({ n: 1 });
+		expect(await got).toMatchObject({ v: 1, ch: `user:${user.userId}`, ev: "hello", data: { n: 1 } });
 		socket.close();
 	});
 });

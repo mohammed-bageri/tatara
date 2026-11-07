@@ -709,11 +709,14 @@ export const realtime: Feature = {
   socket.io: \`io(API_URL, { path: "/realtime", transports: ["websocket"], auth: { ticket } })\`.
   A socket belongs to one user in one org, and joins that user's and that org's rooms.
 - Publish from any process (api, worker, cron): \`publishToUser(orgId, userId, event, payload)\`,
-  \`publishToOrg(orgId, event, payload)\` from \`#core/realtime/index\`. \`disconnectUser\` /
-  \`disconnectOrg\` close sockets when access changes; clients reconnect with a new ticket.
+  \`publishToOrg(orgId, event, payload)\` from \`#core/realtime/index\`. Clients receive every event on
+  \`"rt"\` as \`{ id, v, ch, ev, ts, data }\` (\`ch\` is \`"org"\`, \`"user:<id>"\` or the channel name).
+- \`disconnectUser(orgId, userId, reason)\` / \`disconnectOrg(orgId, reason)\` close sockets when access
+  changes, after sending \`"rt:closed" { reason }\`; clients reconnect with a new ticket.
 - Rooms of your own: \`channels/<name>.ts\` in a module, \`defineChannel({ name: "survey.{surveyId}",
-  events: { "answer.created": schema }, authorize(who, params) })\`. Clients \`emit("subscribe", name)\`;
-  publish with \`publishTo(channel, { orgId, params, event, payload })\` (the payload is checked).
+  events: { "answer.created": schema }, permission?, feature?, authorize?(who, params) })\`. Clients
+  \`emit("subscribe", name)\` and get \`{ ok, channel, code? }\`; publish with
+  \`publishTo(channel, { orgId, params, event, payload })\` (typed; a bad payload is logged and dropped).
 - With notifications, every inbox entry is also pushed as \`notification.created\`.
 `,
 		},
