@@ -1,5 +1,13 @@
 # @tatara/cli
 
+## 0.15.2
+
+### Patch Changes
+
+- c9627ee: `prepareTestDatabases({ migrate, seed?, fingerprint? })` builds a Postgres template database once and copies it per worker, rebuilding it only when the fingerprint changes (`fingerprintFiles`). Adds `cleanDatabase` (deletes only dirty tables, FK triggers off), per-worker Redis dbs (`workerRedisDb`, `workerRedisUrl`, `flushWorkerRedis`, refusing db 0), `separator` for worker database names, and `jsonOk` / `jsonPaginated` / `jsonErr` for `@tatara/http` bodies. Postgres apps' test setup now uses the template.
+  
+  `cleanDatabase({ roots })` cleans only the given tables and every table referencing them.
+
 ## 0.15.1
 
 ### Patch Changes
