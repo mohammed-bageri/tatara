@@ -1,5 +1,27 @@
 # @tatara/authz
 
+## 0.7.0
+
+### Minor Changes
+
+- 0d5bd1a: Member and role operations apps had to write themselves:
+  - `setMemberRoles` replaces a member's roles, writing and auditing only the difference, in one step.
+  - `addRolesToMembers` adds roles to many members and reports the ones skipped.
+  - `duplicateRole` copies a built-in or custom role.
+  - `listUsersWithPermission` lists everyone a check would allow, read at decision time. It can take the caller's transaction, and needs the new `listMembers` option when a members-held role grants the permission.
+  - `listAudit` pages with a cursor.
+  - `syncSystemRoles` also deletes built-in roles the code no longer has, and reports them in `deleted`.
+  - `createAuthz({ canHoldRoles })` lets the app refuse users who may not hold org roles.
+  - `authzPlugin({ creatorRole })` takes several roles.
+  
+  `AuthzStore` gains `replaceMemberRoles` and `permissionHolders`, and `listAudit` takes a cursor. The drizzle, prisma and memory stores implement them; a custom store must add them.
+- cfa034f: The shared permission cache invalidates correctly across processes: a cached set is keyed by a global, org, member-in-org and member version together, so `invalidateAll` reaches every process (it used to bump only orgs this process had cached) and a member's own bumps no longer mask an org-wide one (the key took the larger of two counters). `invalidateMember(userId)` without an org reaches other processes too. A failing shared cache never fails a check or a change: `onCacheError` reports it and the check reads the store. New `onInvalidate` option: called after every invalidation (e.g. to drop a revoked member's realtime connections).
+
+### Patch Changes
+
+- Updated dependencies [9f720bd]
+  - @tatara/cache@0.2.0
+
 ## 0.6.0
 
 ### Minor Changes
