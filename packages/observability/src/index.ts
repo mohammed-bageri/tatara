@@ -7,7 +7,12 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
-import { ParentBasedSampler, TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace";
+import {
+	BatchSpanProcessor,
+	ParentBasedSampler,
+	type SpanProcessor,
+	TraceIdRatioBasedSampler,
+} from "@opentelemetry/sdk-trace";
 import { onShutdown } from "@tatara/core";
 import type { MiddlewareHandler } from "hono";
 
@@ -24,6 +29,8 @@ export interface TelemetryOptions {
 	metricsIntervalMs?: number;
 	/** auto-instrument the libraries the app uses (pg, ioredis, http, fetch…); default true */
 	autoInstrument?: boolean;
+	/** run on every span before it is exported, in order (e.g. to redact secrets from attributes) */
+	spanProcessors?: SpanProcessor[];
 }
 
 /** Starts OpenTelemetry for this process and flushes it on shutdown; null when no endpoint is set. */
@@ -35,7 +42,12 @@ export function startTelemetry(options: TelemetryOptions): NodeSDK | null {
 			"service.name": options.serviceName,
 			...(options.serviceVersion ? { "service.version": options.serviceVersion } : {}),
 		}),
-		traceExporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers: options.headers }),
+		spanProcessors: [
+			...(options.spanProcessors ?? []),
+			new BatchSpanProcessor({
+				exporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers: options.headers }),
+			}),
+		],
 		metricReaders: [
 			new PeriodicExportingMetricReader({
 				exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics`, headers: options.headers }),
