@@ -292,7 +292,12 @@ describe.skipIf(!REDIS_URL)("realtime across processes (Redis)", { timeout: 20_0
 		const warnings: unknown[] = [];
 		const testLogger = pino({
 			level: "warn",
-			hooks: { logMethod: (args, method) => (warnings.push(args[0]), method.apply(this, args)) },
+			hooks: {
+				logMethod(args, method) {
+					warnings.push(args[0]);
+					return method.apply(this, args);
+				},
+			},
 		});
 		const worker = createRealtime({
 			driver: "socketio",
@@ -325,7 +330,12 @@ describe.skipIf(!REDIS_URL)("realtime across processes (Redis)", { timeout: 20_0
 		const warnings: unknown[] = [];
 		const testLogger = pino({
 			level: "warn",
-			hooks: { logMethod: (args, method) => (warnings.push(args[0]), method.apply(this, args)) },
+			hooks: {
+				logMethod(args, method) {
+					warnings.push(args[0]);
+					return method.apply(this, args);
+				},
+			},
 		});
 		const worker = createRealtime({
 			driver: "socketio",
