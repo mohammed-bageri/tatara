@@ -232,16 +232,23 @@ describe("listAudit", () => {
 });
 
 describe("syncSystemRoles", () => {
-	it("deletes built-in roles the code no longer has, with their assignments", async () => {
-		const legacy = await createAuthz<Key>({
+	it("deletes built-in roles the code no longer has, but keeps one a member still holds", async () => {
+		const legacy = createAuthz<Key>({
 			store: authz.store,
 			catalog,
-			systemRoles: [...SYSTEM_ROLES, { key: "legacy", name: "Legacy", description: "" }],
+			systemRoles: [
+				...SYSTEM_ROLES,
+				{ key: "legacy", name: "Legacy", description: "" },
+				{ key: "unused", name: "Unused", description: "" },
+			],
 		});
 		await legacy.syncSystemRoles();
 		await authz.store.assignRole("org1", "u1", await systemRoleId("legacy"), null);
-		expect((await authz.syncSystemRoles()).deleted).toEqual(["legacy"]);
-		expect(await authz.store.findRoleByKey(SYSTEM_ORG_ID, "legacy")).toBeNull();
-		expect((await authz.getMember("org1", "u1")).roles).toEqual([]);
+		const result = await authz.syncSystemRoles();
+		expect(result.deleted).toEqual(["unused"]);
+		expect(result.kept).toEqual(["legacy"]);
+		expect(await authz.store.findRoleByKey(SYSTEM_ORG_ID, "unused")).toBeNull();
+		// the member keeps the access the old role gave
+		expect((await authz.getMember("org1", "u1")).roles.map((r) => r.key)).toEqual(["legacy"]);
 	});
 });

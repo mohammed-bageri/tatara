@@ -78,6 +78,9 @@ export function memoryAuthzStore(): AuthzStore {
 			for (let i = members.length - 1; i >= 0; i--)
 				if (members[i]?.roleId === roleId) members.splice(i, 1);
 		},
+		async roleAssignmentCount(roleId) {
+			return members.filter((m) => m.roleId === roleId).length;
+		},
 		async memberRoles(orgId, userId) {
 			return assigned(orgId, userId).map((r) => toRow(r, orgId));
 		},

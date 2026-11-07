@@ -197,6 +197,14 @@ export function drizzleAuthzStore(db: any, tables: DrizzleAuthzTables): AuthzSto
 			await db.delete(authzRoles).where(eq(authzRoles.id, roleId));
 		},
 
+		async roleAssignmentCount(roleId) {
+			const [row] = await db
+				.select({ n: count() })
+				.from(authzMemberRoles)
+				.where(eq(authzMemberRoles.roleId, roleId));
+			return Number(row?.n ?? 0);
+		},
+
 		async memberRoles(orgId, userId) {
 			const assigned = await db
 				.select({ roleId: authzMemberRoles.roleId })
