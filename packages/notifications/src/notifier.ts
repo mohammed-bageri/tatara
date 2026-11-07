@@ -7,20 +7,43 @@ import {
 	type EmailContent,
 	type InAppContent,
 	type NotificationDefinition,
+	type NotificationParams,
 	type PushContent,
 	type Recipients,
 	renderChannel,
+	type Translate,
 } from "./define.ts";
+import { renderInApp } from "./localize.ts";
 import type { NotificationStore } from "./store.ts";
 
+/**
+ * Passed with every send. `idempotencyKey` is `<notification id>:<channel>:<user id>`, the same on
+ * every retry: hand it to a provider that dedupes on one, so an at-least-once resend isn't sent twice.
+ */
+export interface SendOptions {
+	idempotencyKey: string;
+}
+
 export interface SmsSender {
-	send(to: string, text: string): Promise<void>;
+	send(to: string, text: string, options?: SendOptions): Promise<void>;
 }
 
 export interface PushSender {
 	/** sends to each token; returns the tokens the provider says are gone, to forget them */
-	send(tokens: readonly string[], content: PushContent): Promise<{ invalidTokens: string[] }>;
+	send(
+		tokens: readonly string[],
+		content: PushContent,
+		options?: SendOptions,
+	): Promise<{ invalidTokens: string[] }>;
 }
+
+/**
+ * How a channel survives a crash. `at-most-once` (the default) takes the channel before sending:
+ * a crash after that never sends it. `at-least-once` records it pending, sends, then marks it sent:
+ * a crash in between leaves it pending and the job's next delivery sends it again, with the same
+ * idempotency key. The store needs `claimPending` and `markSent` for it.
+ */
+export type DeliveryMode = "at-most-once" | "at-least-once";
 
 export interface Contact {
 	email?: string | null;
@@ -50,13 +73,30 @@ export interface NotifierOptions {
 	};
 	/** where to reach a user, and in which language */
 	contact(userId: string): Promise<Contact | null>;
-	email?: { send(message: { to: string } & EmailContent): Promise<void> };
+	email?: { send(message: { to: string } & EmailContent, options?: SendOptions): Promise<void> };
 	sms?: SmsSender;
 	push?: PushSender;
-	/** after an in-app notification is stored, e.g. to push it to the user's open tabs */
-	onInApp?(
-		row: { id: string; orgId: string; userId: string; name: string } & InAppContent,
-	): Promise<void>;
+	/**
+	 * After an in-app notification is stored, e.g. to push it to the user's open tabs. `title` and
+	 * `body` are in the user's language (keys go through `translate`).
+	 */
+	onInApp?(row: {
+		id: string;
+		orgId: string;
+		userId: string;
+		name: string;
+		title: string;
+		body?: string;
+		url?: string;
+		titleKey?: string;
+		bodyKey?: string;
+		params?: NotificationParams;
+		idempotencyKey: string;
+	}): Promise<void>;
+	/** how stored keys become text, for `onInApp`; the inbox uses `localizeNotification` */
+	translate?: Translate;
+	/** per channel; every channel is at-most-once unless listed here */
+	delivery?: Partial<Record<Channel, DeliveryMode>>;
 	/**
 	 * The app's say over delivery: return false and this user doesn't get this channel (their
 	 * preferences, quiet hours, an unverified address…). Asked once per user and channel.
@@ -129,6 +169,10 @@ export function createNotifier<Names extends object = Record<string, unknown>>(
 	options: NotifierOptions,
 ) {
 	const byName = new Map(options.notifications.map((n) => [n.name, n]));
+	const { store } = options;
+	const atLeastOnce = (channel: Channel) => options.delivery?.[channel] === "at-least-once";
+	if (CHANNELS.some(atLeastOnce) && (!store.claimPending || !store.markSent))
+		throw new Error("At-least-once delivery needs a store with claimPending() and markSent()");
 	const definition = (name: string) => {
 		const found = byName.get(name);
 		if (!found) throw new Error(`No notification named "${name}"`);
@@ -219,11 +263,20 @@ export function createNotifier<Names extends object = Record<string, unknown>>(
 				idempotencyKey: job.key,
 			});
 			for (const channel of channels) {
+				const sendIt = () =>
+					send(channel, def, data, language, contact, job, record.id, inApp, ctx.logger);
+				if (atLeastOnce(channel)) {
+					// pending until the send returns: a crash or a failure leaves it for the next delivery
+					if (!(await store.claimPending?.(record.id, channel))) continue;
+					await sendIt();
+					await store.markSent?.(record.id, channel);
+					continue;
+				}
 				// taken before sending: two deliveries of one key can't both send it. A crash after
 				// this sends nothing for the channel: at most once, never twice
 				if (!(await options.store.claimChannel(record.id, channel))) continue;
 				try {
-					await send(channel, def, data, language, contact, job, record.id, inApp, ctx.logger);
+					await sendIt();
 				} catch (error) {
 					// hand it back so the job's retry sends it
 					await options.store.releaseChannel(record.id, channel);
@@ -245,6 +298,7 @@ export function createNotifier<Names extends object = Record<string, unknown>>(
 		inApp: InAppContent | null,
 		logger: CoreLogger,
 	): Promise<"sent" | "skipped"> {
+		const sendOptions: SendOptions = { idempotencyKey: `${id}:${channel}:${job.userId}` };
 		const skip = (why: string) => {
 			logger.debug({ channel, userId: job.userId, why }, "notification channel skipped");
 			return "skipped" as const;
@@ -258,19 +312,25 @@ export function createNotifier<Names extends object = Record<string, unknown>>(
 						userId: job.userId,
 						name: def.name,
 						...inApp,
+						...renderInApp(inApp, language, options.translate),
+						...sendOptions,
 					});
 				return "sent";
 			case "email": {
 				if (!options.email) return skip("no email sender");
 				if (!contact.email) return skip("no email address");
 				const content = renderChannel(def, "email", data, language) as EmailContent;
-				await options.email.send({ to: contact.email, ...content });
+				await options.email.send({ to: contact.email, ...content }, sendOptions);
 				return "sent";
 			}
 			case "sms": {
 				if (!options.sms) return skip("no SMS sender");
 				if (!contact.phone) return skip("no phone number");
-				await options.sms.send(contact.phone, renderChannel(def, "sms", data, language) as string);
+				await options.sms.send(
+					contact.phone,
+					renderChannel(def, "sms", data, language) as string,
+					sendOptions,
+				);
 				return "sent";
 			}
 			case "push": {
@@ -282,6 +342,7 @@ export function createNotifier<Names extends object = Record<string, unknown>>(
 					result = await options.push.send(
 						tokens,
 						renderChannel(def, "push", data, language) as PushContent,
+						sendOptions,
 					);
 				} catch (error) {
 					const gone = (error as { invalidTokens?: string[] }).invalidTokens;

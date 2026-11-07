@@ -17,6 +17,14 @@ const COLUMN = {
 	push: "sentPush",
 } as const satisfies Record<Channel, string>;
 
+/** at-least-once channels that went out; `sent*` then means taken or pending */
+const DELIVERED = {
+	"in-app": "deliveredInApp",
+	email: "deliveredEmail",
+	sms: "deliveredSms",
+	push: "deliveredPush",
+} as const satisfies Record<Channel, string>;
+
 /** Rows an update changed: node-postgres says rowCount, mysql2 affectedRows. */
 const changed = (result: unknown): number => {
 	const r = result as { rowCount?: number; affectedRows?: number } & {
@@ -32,6 +40,14 @@ export function drizzleNotificationStore(
 	tables: DrizzleNotificationTables,
 ): NotificationStore {
 	const { notifications: n, pushTokens: p } = tables;
+	// tables from before keys and at-least-once lack these columns; they're needed only when used
+	const missing = (column: string, use: string) =>
+		new Error(`The notifications table has no ${column} column, which ${use} needs`);
+	const delivered = (channel: Channel) => {
+		const column = DELIVERED[channel];
+		if (!n[column]) throw missing(column, "at-least-once delivery");
+		return column;
+	};
 	const inbox = (orgId: string, userId: string) =>
 		and(eq(n.orgId, orgId), eq(n.userId, userId), eq(n.inApp, true));
 	return {
@@ -40,6 +56,15 @@ export function drizzleNotificationStore(
 				(await db.select({ id: n.id }).from(n).where(eq(n.idempotencyKey, row.idempotencyKey)))[0];
 			const found = await find();
 			if (found) return { id: found.id };
+			const keys = row.inApp
+				? {
+						titleKey: row.inApp.titleKey ?? null,
+						bodyKey: row.inApp.bodyKey ?? null,
+						params: row.inApp.params ?? null,
+					}
+				: null;
+			if (keys && !n.titleKey && (keys.titleKey || keys.bodyKey || keys.params))
+				throw missing("titleKey", "a notification with keys");
 			try {
 				await db.insert(n).values({
 					id: row.id,
@@ -49,6 +74,7 @@ export function drizzleNotificationStore(
 					title: row.inApp?.title ?? "",
 					body: row.inApp?.body ?? null,
 					url: row.inApp?.url ?? null,
+					...(keys && n.titleKey ? keys : {}),
 					inApp: row.inApp !== null,
 					idempotencyKey: row.idempotencyKey,
 				});
@@ -73,6 +99,21 @@ export function drizzleNotificationStore(
 			await db
 				.update(n)
 				.set({ [COLUMN[channel]]: false })
+				.where(eq(n.id, id));
+		},
+		async claimPending(id, channel) {
+			const column = delivered(channel);
+			await db
+				.update(n)
+				.set({ [COLUMN[channel]]: true })
+				.where(eq(n.id, id));
+			const [row] = await db.select({ done: n[column] }).from(n).where(eq(n.id, id));
+			return row !== undefined && !row.done;
+		},
+		async markSent(id, channel) {
+			await db
+				.update(n)
+				.set({ [delivered(channel)]: true })
 				.where(eq(n.id, id));
 		},
 		async list(orgId, userId, { limit, before, unreadOnly }) {
@@ -102,6 +143,9 @@ export function drizzleNotificationStore(
 					title: r.title,
 					body: r.body,
 					url: r.url,
+					titleKey: r.titleKey ?? null,
+					bodyKey: r.bodyKey ?? null,
+					params: r.params ?? null,
 					readAt: r.readAt,
 					createdAt: r.createdAt,
 				}),
