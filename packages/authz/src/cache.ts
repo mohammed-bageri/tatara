@@ -10,13 +10,28 @@ export interface PermissionCache {
 	invalidateAll(): Promise<void>;
 }
 
+/** What was invalidated: one member (in one org, or everywhere), or everything. */
+export type PermissionInvalidation =
+	| { kind: "member"; userId: string; orgId?: string }
+	| { kind: "all" };
+
+export interface PermissionCacheOptions {
+	sharedCache?: Cache;
+	localTtlMs?: number;
+	/** after every invalidation, e.g. to drop a revoked member's realtime connections */
+	onInvalidate?: (event: PermissionInvalidation) => void | Promise<void>;
+	/** a shared-cache failure; the check reads the store instead of failing */
+	onError?: (error: unknown) => void;
+}
+
 /**
  * Permission cache with optional shared backend.
  *
- * When `sharedCache` is provided, uses versioned keys: a per-org and per-member version counter
- * in the shared cache that invalidation bumps. Cached entries are keyed by version, so a bump
- * invalidates every process at once. A very short local in-memory layer (≤1 s, configurable via
- * `localTtlMs`) absorbs hot paths.
+ * When `sharedCache` is provided, uses versioned keys: global, per-org, per-member-in-org and
+ * per-member counters in the shared cache that invalidation bumps. A cached entry is keyed by all
+ * four, so any bump invalidates every process at once. A very short local in-memory layer (≤1 s,
+ * configurable via `localTtlMs`) absorbs hot paths. A failing shared cache is reported through
+ * `onError` and the check falls back to the store; it never fails a check.
  *
  * Without a shared cache, behaviour stays as today: an in-process Map with the full `ttlMs`.
  * This means invalidation only clears the local process — with several API replicas, a revoked
@@ -24,12 +39,15 @@ export interface PermissionCache {
  */
 export function createPermissionCache(
 	ttlMs: number,
-	options?: { sharedCache?: Cache; localTtlMs?: number },
+	options: PermissionCacheOptions = {},
 ): PermissionCache {
-	const { sharedCache, localTtlMs = 1000 } = options ?? {};
+	const { sharedCache, localTtlMs = 1000, onInvalidate, onError } = options;
+	const notify = async (event: PermissionInvalidation) => {
+		await onInvalidate?.(event);
+	};
 
 	if (!sharedCache) {
-		// No shared cache: in-process only (original behaviour)
+		// No shared cache: in-process only
 		const entries = new Map<string, { value: EffectivePermissions; expires: number }>();
 		const key = (orgId: string, userId: string, roles: string[]) =>
 			`${orgId}:${userId}:${[...roles].sort().join(",")}`;
@@ -48,9 +66,11 @@ export function createPermissionCache(
 					const [o, u] = k.split(":");
 					if (u === userId && (!orgId || o === orgId)) entries.delete(k);
 				}
+				await notify({ kind: "member", userId, ...(orgId ? { orgId } : {}) });
 			},
 			async invalidateAll() {
 				entries.clear();
+				await notify({ kind: "all" });
 			},
 		};
 	}
@@ -58,134 +78,106 @@ export function createPermissionCache(
 	// Shared cache with versioned keys + short local layer
 	const localCache = new Map<
 		string,
-		{ value: EffectivePermissions; version: number; expires: number }
+		{ value: EffectivePermissions; version: string; expires: number }
 	>();
-
-	const versionKey = (orgId: string, userId?: string) =>
-		userId ? `authz:v:${orgId}:${userId}` : `authz:v:${orgId}`;
-
-	const permKey = (orgId: string, userId: string, roles: string[], version: number) =>
+	const GLOBAL = "authz:v";
+	const orgKey = (orgId: string) => `authz:v:o:${orgId}`;
+	const memberKey = (orgId: string, userId: string) => `authz:v:m:${orgId}:${userId}`;
+	const userKey = (userId: string) => `authz:v:u:${userId}`;
+	const permKey = (orgId: string, userId: string, roles: string[], version: string) =>
 		`authz:p:${orgId}:${userId}:${version}:${[...roles].sort().join(",")}`;
-
 	const localKey = (orgId: string, userId: string, roles: string[]) =>
 		`${orgId}:${userId}:${[...roles].sort().join(",")}`;
 
-	async function getVersion(orgId: string, userId?: string): Promise<number> {
-		if (!sharedCache) return 0;
-		const v = await sharedCache.get<number>(versionKey(orgId, userId));
-		return v ?? 0;
+	/** every counter a cached set depends on: a bump of any one of them changes the key */
+	async function version(orgId: string, userId: string): Promise<string> {
+		const parts = await Promise.all(
+			[GLOBAL, orgKey(orgId), memberKey(orgId, userId), userKey(userId)].map(
+				async (key) => (await sharedCache?.get<number>(key)) ?? 0,
+			),
+		);
+		return parts.join(".");
 	}
 
-	async function bumpVersion(orgId: string, userId?: string): Promise<void> {
-		if (!sharedCache) return;
-		await sharedCache.increment(versionKey(orgId, userId));
+	async function bump(key: string): Promise<void> {
+		try {
+			await sharedCache?.increment(key);
+		} catch (error) {
+			// the change is already written: report it (other processes may be stale for up to
+			// ttlMs) rather than fail it
+			onError?.(error);
+		}
 	}
 
-	// Serialize/deserialize helpers for Set
 	interface SerializedEffectivePermissions {
 		grants: EffectivePermissions["grants"];
 		denies: string[];
 		roles: string[];
 	}
-
-	function serialize(value: EffectivePermissions): SerializedEffectivePermissions {
-		return {
-			grants: value.grants,
-			denies: Array.from(value.denies),
-			roles: value.roles,
-		};
-	}
-
-	function deserialize(serialized: SerializedEffectivePermissions): EffectivePermissions {
-		return {
-			grants: serialized.grants,
-			denies: new Set(serialized.denies),
-			roles: serialized.roles,
-		};
-	}
+	const serialize = (value: EffectivePermissions): SerializedEffectivePermissions => ({
+		grants: value.grants,
+		denies: Array.from(value.denies),
+		roles: value.roles,
+	});
+	const deserialize = (serialized: SerializedEffectivePermissions): EffectivePermissions => ({
+		grants: serialized.grants,
+		denies: new Set(serialized.denies),
+		roles: serialized.roles,
+	});
 
 	return {
 		async get(orgId, userId, roles) {
-			// Check shared cache version first to see if local is stale
-			const [orgVersion, memberVersion] = await Promise.all([
-				getVersion(orgId),
-				getVersion(orgId, userId),
-			]);
-			const version = Math.max(orgVersion, memberVersion);
-
-			const local = localCache.get(localKey(orgId, userId, roles));
-			if (local && local.expires >= Date.now() && local.version === version) {
-				return local.value;
-			}
-
-			// Fetch from shared cache with current version
-			const cached = await sharedCache.get<SerializedEffectivePermissions>(
-				permKey(orgId, userId, roles, version),
-			);
-
-			if (cached) {
+			try {
+				const current = await version(orgId, userId);
+				const local = localCache.get(localKey(orgId, userId, roles));
+				if (local && local.expires >= Date.now() && local.version === current) return local.value;
+				const cached = await sharedCache.get<SerializedEffectivePermissions>(
+					permKey(orgId, userId, roles, current),
+				);
+				if (!cached) return undefined;
 				const value = deserialize(cached);
-				// Refresh local cache with current version
 				localCache.set(localKey(orgId, userId, roles), {
 					value,
-					version,
+					version: current,
 					expires: Date.now() + localTtlMs,
 				});
 				return value;
+			} catch (error) {
+				onError?.(error);
+				return undefined;
 			}
-
-			return undefined;
 		},
 
 		async set(orgId, userId, roles, value) {
-			const [orgVersion, memberVersion] = await Promise.all([
-				getVersion(orgId),
-				getVersion(orgId, userId),
-			]);
-			const version = Math.max(orgVersion, memberVersion);
-
-			// Store in shared cache with version (serialized)
-			await sharedCache.set(permKey(orgId, userId, roles, version), serialize(value), { ttlMs });
-
-			// Store in local cache
-			if (localCache.size > 10_000) localCache.clear();
-			localCache.set(localKey(orgId, userId, roles), {
-				value,
-				version,
-				expires: Date.now() + localTtlMs,
-			});
+			try {
+				const current = await version(orgId, userId);
+				await sharedCache.set(permKey(orgId, userId, roles, current), serialize(value), {
+					ttlMs,
+				});
+				if (localCache.size > 10_000) localCache.clear();
+				localCache.set(localKey(orgId, userId, roles), {
+					value,
+					version: current,
+					expires: Date.now() + localTtlMs,
+				});
+			} catch (error) {
+				onError?.(error);
+			}
 		},
 
 		async invalidateMember(userId, orgId) {
-			if (orgId) {
-				// Bump per-member version in one org
-				await bumpVersion(orgId, userId);
-				// Clear local entries for this member in this org
-				for (const k of localCache.keys()) {
-					const [o, u] = k.split(":");
-					if (o === orgId && u === userId) localCache.delete(k);
-				}
-			} else {
-				// Member in any org: we'd need to bump every org they're in, but we don't track that.
-				// Fall back to clearing local only. Apps should always pass orgId.
-				for (const k of localCache.keys()) {
-					const [, u] = k.split(":");
-					if (u === userId) localCache.delete(k);
-				}
+			await bump(orgId ? memberKey(orgId, userId) : userKey(userId));
+			for (const k of localCache.keys()) {
+				const [o, u] = k.split(":");
+				if (u === userId && (!orgId || o === orgId)) localCache.delete(k);
 			}
+			await notify({ kind: "member", userId, ...(orgId ? { orgId } : {}) });
 		},
 
 		async invalidateAll() {
-			// Bump version for every org we've cached (we don't have a global org list, so this
-			// is best-effort). In practice, apps call invalidateMember per affected member when
-			// a role changes, which is more precise.
-			const orgs = new Set<string>();
-			for (const k of localCache.keys()) {
-				const parts = k.split(":");
-				if (parts[0]) orgs.add(parts[0]);
-			}
-			await Promise.all([...orgs].map((orgId) => bumpVersion(orgId)));
+			await bump(GLOBAL);
 			localCache.clear();
+			await notify({ kind: "all" });
 		},
 	};
 }

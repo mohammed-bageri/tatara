@@ -77,7 +77,7 @@ describe("createPermissionCache with shared cache", () => {
 		expect(result3).toEqual(value);
 	});
 
-	it("invalidateAll bumps org versions for known orgs", async () => {
+	it("invalidateAll reaches orgs only another process cached", async () => {
 		const cache1 = createPermissionCache(30_000, { sharedCache, localTtlMs: 500 });
 		const cache2 = createPermissionCache(30_000, { sharedCache, localTtlMs: 500 });
 
@@ -87,8 +87,9 @@ describe("createPermissionCache with shared cache", () => {
 			roles: ["viewer"],
 		};
 
+		// org2 is cached by cache2 only: cache1 has never seen it
 		await cache1.set("org1", "user1", ["viewer"], value);
-		await cache1.set("org2", "user2", ["viewer"], value);
+		await cache2.set("org2", "user2", ["viewer"], value);
 
 		// Wait for local cache to expire so cache2 can fetch from shared
 		await wait(600);
@@ -137,5 +138,83 @@ describe("createPermissionCache with shared cache", () => {
 
 		expect(await cache.get("org1", "user1", ["admin"])).toEqual(valueAdmin);
 		expect(await cache.get("org1", "user1", ["member"])).toEqual(valueMember);
+	});
+
+	const sample: EffectivePermissions = {
+		grants: [{ resource: "report", action: "read", scope: "org" }],
+		denies: new Set(),
+		roles: ["viewer"],
+	};
+
+	it("a member's own invalidations never mask a later org-wide one", async () => {
+		const writer = createPermissionCache(30_000, { sharedCache, localTtlMs: 1 });
+		const reader = createPermissionCache(30_000, { sharedCache, localTtlMs: 1 });
+		// the member's version climbs past anything org-wide
+		for (let i = 0; i < 3; i++) await writer.invalidateMember("user1", "org1");
+		await writer.set("org1", "user1", ["viewer"], sample);
+		await wait(5);
+		expect(await reader.get("org1", "user1", ["viewer"])).toEqual(sample);
+		await writer.invalidateAll();
+		await wait(5);
+		expect(await reader.get("org1", "user1", ["viewer"])).toBeUndefined();
+	});
+
+	it("invalidating a member in every org reaches other processes", async () => {
+		const writer = createPermissionCache(30_000, { sharedCache, localTtlMs: 1 });
+		const reader = createPermissionCache(30_000, { sharedCache, localTtlMs: 1 });
+		await reader.set("org1", "user1", ["viewer"], sample);
+		await reader.set("org2", "user1", ["viewer"], sample);
+		await writer.invalidateMember("user1");
+		await wait(5);
+		expect(await reader.get("org1", "user1", ["viewer"])).toBeUndefined();
+		expect(await reader.get("org2", "user1", ["viewer"])).toBeUndefined();
+	});
+
+	it("never fails a check or a change when the shared cache fails, and reports it", async () => {
+		const broken = createCache(
+			{
+				...memoryStore(),
+				get: async () => {
+					throw new Error("redis down");
+				},
+				set: async () => {
+					throw new Error("redis down");
+				},
+				increment: async () => {
+					throw new Error("redis down");
+				},
+			},
+			{ prefix: "broken" },
+		);
+		const errors: unknown[] = [];
+		const cache = createPermissionCache(30_000, {
+			sharedCache: broken,
+			onError: (error) => errors.push(error),
+		});
+		await expect(cache.set("org1", "user1", ["viewer"], sample)).resolves.toBeUndefined();
+		await expect(cache.get("org1", "user1", ["viewer"])).resolves.toBeUndefined();
+		await expect(cache.invalidateMember("user1", "org1")).resolves.toBeUndefined();
+		await expect(cache.invalidateAll()).resolves.toBeUndefined();
+		expect(errors.length).toBeGreaterThanOrEqual(4);
+	});
+
+	it("tells the app what was invalidated, with or without a shared cache", async () => {
+		for (const options of [{}, { sharedCache }]) {
+			const events: unknown[] = [];
+			const cache = createPermissionCache(30_000, {
+				...options,
+				onInvalidate: (event) => {
+					events.push(event);
+				},
+			});
+			await cache.invalidateMember("user1", "org1");
+			await cache.invalidateMember("user2");
+			await cache.invalidateAll();
+			expect(events).toEqual([
+				{ kind: "member", userId: "user1", orgId: "org1" },
+				{ kind: "member", userId: "user2" },
+				{ kind: "all" },
+			]);
+		}
 	});
 });
