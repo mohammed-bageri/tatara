@@ -181,8 +181,9 @@ describe("createAuthz", () => {
 		expect(await authz.syncSystemRoles()).toEqual({
 			created: ["admin", "member", "support"],
 			updated: [],
+			deleted: [],
 		});
-		expect(await authz.syncSystemRoles()).toEqual({ created: [], updated: [] });
+		expect(await authz.syncSystemRoles()).toEqual({ created: [], updated: [], deleted: [] });
 	});
 
 	it("keeps instances separate", async () => {

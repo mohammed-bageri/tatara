@@ -10,8 +10,8 @@ import type { Authz } from "./authz.ts";
 import { SYSTEM_ORG_ID } from "./constants.ts";
 
 export interface AuthzPluginOptions<K extends string> {
-	/** built-in role an org's creator gets (default `"admin"`); `false` gives none */
-	creatorRole?: string | false;
+	/** built-in role(s) an org's creator and owners get (default `"admin"`); `false` gives none */
+	creatorRole?: string | readonly string[] | false;
 	/**
 	 * Member roles better-auth may store (default owner and member): it tracks membership, authz
 	 * decides access. Include better-auth's `creatorRole` if you changed it.
@@ -78,7 +78,11 @@ export function authzPlugin<K extends string>(
 	>,
 	options: AuthzPluginOptions<K> = {},
 ) {
-	const creatorRole = options.creatorRole ?? "admin";
+	const creatorRoles: readonly string[] =
+		options.creatorRole === false ? [] : [options.creatorRole ?? "admin"].flat();
+	const grantCreatorRoles = async (orgId: string, userId: string, actor: string | null) => {
+		for (const key of creatorRoles) await authz.grantSystemRole(orgId, userId, key, actor);
+	};
 	const memberRoles = new Set(options.memberRoles ?? ["owner", "member"]);
 	const endpoints = options.endpoints ?? {};
 
@@ -129,7 +133,12 @@ export function authzPlugin<K extends string>(
 	/** Owners hold the creator's role: given on becoming owner, taken on ceasing to be one. */
 	const ownership: AuthMiddleware = createAuthMiddleware(async (ctx) => {
 		const returned = ctx.context.returned;
-		if (!creatorRole || !returned || returned instanceof Error || returned instanceof Response)
+		if (
+			!creatorRoles.length ||
+			!returned ||
+			returned instanceof Error ||
+			returned instanceof Response
+		)
 			return;
 		const member = record(returned);
 		if (typeof member.organizationId !== "string" || typeof member.userId !== "string") return;
@@ -138,30 +147,36 @@ export function authzPlugin<K extends string>(
 			"owner",
 		);
 		const isOwner = rolesIn(member.role).includes("owner");
-		if (isOwner && !wasOwner)
-			await authz.grantSystemRole(member.organizationId, member.userId, creatorRole, actor);
+		if (isOwner && !wasOwner) await grantCreatorRoles(member.organizationId, member.userId, actor);
 		if (wasOwner && !isOwner) {
-			const role = await authz.store.findRoleByKey(SYSTEM_ORG_ID, creatorRole);
 			const held = await authz.store.memberRoles(member.organizationId, member.userId);
-			if (role && held.some((r) => r.id === role.id))
-				await authz.revokeRole(
-					actor ?? member.userId,
-					member.organizationId,
-					member.userId,
-					role.id,
-				);
+			for (const key of creatorRoles) {
+				const role = await authz.store.findRoleByKey(SYSTEM_ORG_ID, key);
+				if (role && held.some((r) => r.id === role.id))
+					await authz.revokeRole(
+						actor ?? member.userId,
+						member.organizationId,
+						member.userId,
+						role.id,
+					);
+			}
 		}
 	});
 
 	/** Someone invited as owner holds the creator's role from the moment they accept. */
 	const acceptedOwner: AuthMiddleware = createAuthMiddleware(async (ctx) => {
 		const returned = ctx.context.returned;
-		if (!creatorRole || !returned || returned instanceof Error || returned instanceof Response)
+		if (
+			!creatorRoles.length ||
+			!returned ||
+			returned instanceof Error ||
+			returned instanceof Response
+		)
 			return;
 		const member = record(record(returned).member);
 		if (typeof member.organizationId !== "string" || typeof member.userId !== "string") return;
 		if (rolesIn(member.role).includes("owner"))
-			await authz.grantSystemRole(member.organizationId, member.userId, creatorRole, member.userId);
+			await grantCreatorRoles(member.organizationId, member.userId, member.userId);
 	});
 
 	const lifecycle: AuthMiddleware = createAuthMiddleware(async (ctx) => {
@@ -170,9 +185,9 @@ export function authzPlugin<K extends string>(
 		const body = record(returned);
 		if (ctx.path === "/organization/create") {
 			const creator = record((body.members as unknown[] | undefined)?.[0]);
-			if (creatorRole && typeof body.id === "string" && typeof creator.userId === "string")
+			if (typeof body.id === "string" && typeof creator.userId === "string")
 				// self-assigned, so the audit log shows who it was
-				await authz.grantSystemRole(body.id, creator.userId, creatorRole, creator.userId);
+				await grantCreatorRoles(body.id, creator.userId, creator.userId);
 			return;
 		}
 		const member = record(ctx.path === "/organization/remove-member" ? body.member : body);

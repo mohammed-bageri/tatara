@@ -47,6 +47,18 @@ export interface EffectivePermissions {
 	roles: string[];
 }
 
+/** Who holds one permission in an org, explicitly: role assignments and live overlays. */
+export interface PermissionHolders {
+	assignments: { userId: string; scope: Scope | null }[];
+	overlays: { userId: string; scope: Scope | null; effect: OverlayEffect }[];
+}
+
+/** Where an audit page ends; the next page starts after it. */
+export interface AuditCursor {
+	at: Date;
+	id: string;
+}
+
 export function grantKey(grant: PermissionGrant): string {
 	return `${grant.resource}:${grant.action}:${grant.scope ?? "*"}`;
 }
@@ -81,11 +93,31 @@ export interface AuthzStore {
 	memberRoles(orgId: string, userId: string): Promise<RoleRow[]>;
 	assignRole(orgId: string, userId: string, roleId: string, by: string | null): Promise<boolean>;
 	revokeRole(orgId: string, userId: string, roleId: string): Promise<boolean>;
+	/** Adds and removes role assignments of one member in one step (atomic). */
+	replaceMemberRoles(
+		orgId: string,
+		userId: string,
+		add: string[],
+		remove: string[],
+		by: string | null,
+	): Promise<void>;
+	/**
+	 * Explicit holders of `resource:action` in an org, read at decision time (no cache).
+	 * `executor` is the caller's transaction, when it passes one, so it sees its own writes.
+	 */
+	permissionHolders(
+		orgId: string,
+		resource: string,
+		action: string,
+		now: Date,
+		executor?: unknown,
+	): Promise<PermissionHolders>;
 	/** Deletes every role assignment and overlay the user has in the org. */
 	removeMember(orgId: string, userId: string): Promise<{ roles: number; overlays: number }>;
 	listOverlays(orgId: string, userId: string): Promise<OverlayRow[]>;
 	addOverlay(input: Omit<OverlayRow, "id" | "createdAt">): Promise<string>;
 	removeOverlay(orgId: string, userId: string, overlayId: string): Promise<OverlayRow | null>;
 	writeAudit(input: Omit<AuditRow, "id" | "at">): Promise<void>;
-	listAudit(orgId: string, limit: number): Promise<AuditRow[]>;
+	/** newest first; with `before`, only entries older than that cursor */
+	listAudit(orgId: string, limit: number, before?: AuditCursor): Promise<AuditRow[]>;
 }

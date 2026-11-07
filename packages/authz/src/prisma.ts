@@ -52,8 +52,8 @@ interface Model<Row> {
 /** What the store needs from the app's PrismaClient: the models in prisma/models/authz.prisma. */
 interface PrismaAuthzClient {
 	authzRole: Model<RoleRecord>;
-	authzRolePermission: Model<unknown>;
-	authzMemberRole: Model<{ id: string }>;
+	authzRolePermission: Model<{ roleId: string; scope: string }>;
+	authzMemberRole: Model<{ id: string; userId: string; roleId: string }>;
 	authzOverlay: Model<OverlayRecord>;
 	authzAuditLog: Model<AuditRecord>;
 	$transaction<T>(fn: (tx: PrismaAuthzClient) => Promise<T>): Promise<T>;
@@ -225,6 +225,57 @@ export function prismaAuthzStore(
 			return count > 0;
 		},
 
+		async replaceMemberRoles(orgId, userId, add, remove, by) {
+			await db.$transaction(async (tx) => {
+				if (remove.length > 0)
+					await tx.authzMemberRole.deleteMany({ where: { orgId, userId, roleId: { in: remove } } });
+				if (add.length > 0)
+					await tx.authzMemberRole.createMany({
+						data: add.map((roleId) => ({ id: newId(), orgId, userId, roleId, assignedBy: by })),
+					});
+			});
+		},
+
+		async permissionHolders(orgId, resource, action, now, executor) {
+			const exec = (executor as PrismaAuthzClient | undefined) ?? db;
+			const grants = await exec.authzRolePermission.findMany({
+				where: { resource, action },
+				select: { roleId: true, scope: true },
+			});
+			const scopesByRole = new Map<string, string[]>();
+			for (const g of grants)
+				scopesByRole.set(g.roleId, [...(scopesByRole.get(g.roleId) ?? []), g.scope]);
+			const [assigned, overlays] = await Promise.all([
+				scopesByRole.size
+					? exec.authzMemberRole.findMany({
+							where: { orgId, roleId: { in: [...scopesByRole.keys()] } },
+							select: { userId: true, roleId: true },
+						})
+					: Promise.resolve([]),
+				exec.authzOverlay.findMany({
+					where: {
+						orgId,
+						resource,
+						action,
+						OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+					},
+				}),
+			]);
+			return {
+				assignments: assigned.flatMap((m) =>
+					(scopesByRole.get(m.roleId) ?? []).map((scope) => ({
+						userId: m.userId,
+						scope: toScope(scope),
+					})),
+				),
+				overlays: overlays.map((o) => ({
+					userId: o.userId,
+					scope: toScope(o.scope),
+					effect: o.effect as OverlayEffect,
+				})),
+			};
+		},
+
 		async removeMember(orgId, userId) {
 			const [roles, overlays] = await db.$transaction([
 				db.authzMemberRole.deleteMany({ where: { orgId, userId } }),
@@ -278,10 +329,17 @@ export function prismaAuthzStore(
 			});
 		},
 
-		async listAudit(orgId, limit) {
+		async listAudit(orgId, limit, before) {
 			const rows = await db.authzAuditLog.findMany({
-				where: { orgId },
-				orderBy: { id: "desc" },
+				where: {
+					orgId,
+					...(before
+						? {
+								OR: [{ at: { lt: before.at } }, { at: before.at, id: { lt: before.id } }],
+							}
+						: {}),
+				},
+				orderBy: [{ at: "desc" }, { id: "desc" }],
 				take: limit,
 			});
 			return rows.map((r) => ({

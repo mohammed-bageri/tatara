@@ -10,6 +10,7 @@ export type OverlayEffect = (typeof OVERLAY_EFFECTS)[number];
 export const AUDIT_CHANGE_TYPES = [
 	"role_created",
 	"role_updated",
+	"role_duplicated",
 	"role_deleted",
 	"member_role_assigned",
 	"member_role_revoked",
