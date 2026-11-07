@@ -1,0 +1,141 @@
+import { createCache, memoryStore } from "@tatara/cache";
+import { beforeEach, describe, expect, it } from "vitest";
+import { createPermissionCache } from "./cache.ts";
+import type { EffectivePermissions } from "./types.ts";
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("createPermissionCache with shared cache", () => {
+	let sharedCache: ReturnType<typeof createCache>;
+
+	beforeEach(() => {
+		sharedCache = createCache(memoryStore(), { prefix: "test" });
+	});
+
+	it("without shared cache, behaves as in-process only", async () => {
+		const cache = createPermissionCache(30_000);
+		const value: EffectivePermissions = {
+			grants: [{ resource: "doc", action: "read", scope: "own" }],
+			denies: new Set(),
+			roles: ["member"],
+		};
+
+		await cache.set("org1", "user1", ["member"], value);
+		expect(await cache.get("org1", "user1", ["member"])).toEqual(value);
+
+		await cache.invalidateMember("user1", "org1");
+		expect(await cache.get("org1", "user1", ["member"])).toBeUndefined();
+	});
+
+	it("with shared cache, invalidation on one instance is seen by another", async () => {
+		const cache1 = createPermissionCache(30_000, { sharedCache, localTtlMs: 500 });
+		const cache2 = createPermissionCache(30_000, { sharedCache, localTtlMs: 500 });
+
+		const value: EffectivePermissions = {
+			grants: [{ resource: "doc", action: "read", scope: "org" }],
+			denies: new Set(),
+			roles: ["admin"],
+		};
+
+		// Cache1 sets a value
+		await cache1.set("org1", "user1", ["admin"], value);
+
+		// Cache2 should see it (after local cache expires)
+		await wait(600);
+		expect(await cache2.get("org1", "user1", ["admin"])).toEqual(value);
+
+		// Cache1 invalidates
+		await cache1.invalidateMember("user1", "org1");
+
+		// Cache2 should NOT see the old value (even within local TTL, version changed)
+		await wait(100);
+		expect(await cache2.get("org1", "user1", ["admin"])).toBeUndefined();
+	});
+
+	it("local cache layer absorbs hot paths", async () => {
+		const cache = createPermissionCache(30_000, { sharedCache, localTtlMs: 200 });
+		const value: EffectivePermissions = {
+			grants: [{ resource: "task", action: "write", scope: "team" }],
+			denies: new Set(),
+			roles: ["manager"],
+		};
+
+		await cache.set("org1", "user2", ["manager"], value);
+
+		// First get hits shared cache
+		const result1 = await cache.get("org1", "user2", ["manager"]);
+		expect(result1).toEqual(value);
+
+		// Second get within localTtlMs hits local cache (we can't prove this directly,
+		// but we verify it doesn't break)
+		const result2 = await cache.get("org1", "user2", ["manager"]);
+		expect(result2).toEqual(value);
+
+		// After local TTL expires, still works
+		await wait(250);
+		const result3 = await cache.get("org1", "user2", ["manager"]);
+		expect(result3).toEqual(value);
+	});
+
+	it("invalidateAll bumps org versions for known orgs", async () => {
+		const cache1 = createPermissionCache(30_000, { sharedCache, localTtlMs: 500 });
+		const cache2 = createPermissionCache(30_000, { sharedCache, localTtlMs: 500 });
+
+		const value: EffectivePermissions = {
+			grants: [{ resource: "report", action: "read", scope: "org" }],
+			denies: new Set(),
+			roles: ["viewer"],
+		};
+
+		await cache1.set("org1", "user1", ["viewer"], value);
+		await cache1.set("org2", "user2", ["viewer"], value);
+
+		// Wait for local cache to expire so cache2 can fetch from shared
+		await wait(600);
+		expect(await cache2.get("org1", "user1", ["viewer"])).toEqual(value);
+		expect(await cache2.get("org2", "user2", ["viewer"])).toEqual(value);
+
+		// Invalidate all on cache1
+		await cache1.invalidateAll();
+
+		// Cache2 should not see the old values
+		await wait(100);
+		expect(await cache2.get("org1", "user1", ["viewer"])).toBeUndefined();
+		expect(await cache2.get("org2", "user2", ["viewer"])).toBeUndefined();
+	});
+
+	it("handles denies correctly", async () => {
+		const cache = createPermissionCache(30_000, { sharedCache });
+		const value: EffectivePermissions = {
+			grants: [{ resource: "file", action: "delete", scope: "own" }],
+			denies: new Set(["file:write:*"]),
+			roles: ["restricted"],
+		};
+
+		await cache.set("org1", "user1", ["restricted"], value);
+		const cached = await cache.get("org1", "user1", ["restricted"]);
+
+		expect(cached).toEqual(value);
+		expect(cached?.denies.has("file:write:*")).toBe(true);
+	});
+
+	it("different roles produce different cache keys", async () => {
+		const cache = createPermissionCache(30_000, { sharedCache });
+		const valueAdmin: EffectivePermissions = {
+			grants: [{ resource: "user", action: "manage", scope: "org" }],
+			denies: new Set(),
+			roles: ["admin"],
+		};
+		const valueMember: EffectivePermissions = {
+			grants: [{ resource: "user", action: "read", scope: "own" }],
+			denies: new Set(),
+			roles: ["member"],
+		};
+
+		await cache.set("org1", "user1", ["admin"], valueAdmin);
+		await cache.set("org1", "user1", ["member"], valueMember);
+
+		expect(await cache.get("org1", "user1", ["admin"])).toEqual(valueAdmin);
+		expect(await cache.get("org1", "user1", ["member"])).toEqual(valueMember);
+	});
+});

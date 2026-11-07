@@ -1,4 +1,5 @@
 import type { Principal } from "@tatara/auth";
+import type { Cache } from "@tatara/cache";
 import {
 	AppError,
 	BusinessRuleError,
@@ -55,6 +56,17 @@ export interface AuthzOptions {
 	systemRoles: readonly SystemRole[];
 	/** how long a resolved permission set is cached in-process (default 30 s) */
 	cacheTtlMs?: number;
+	/**
+	 * Shared cache for permission sets. When provided, uses versioned keys so invalidation on one
+	 * process is seen by all others. Without it, each process has its own cache (multi-replica
+	 * deployments may see up to `cacheTtlMs` of stale permissions after a revocation).
+	 */
+	sharedCache?: Cache;
+	/**
+	 * TTL for the local in-memory layer when `sharedCache` is set (default 1 s). Ignored without
+	 * a shared cache.
+	 */
+	localCacheTtlMs?: number;
 	/**
 	 * Single-tenant apps: the one org every check runs in. Without it, a check with no org is a
 	 * 400 ORG_REQUIRED; nothing falls back to a default org.
@@ -123,7 +135,10 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		if (!systemRoleKeys.has(role))
 			throw new Error(`Permission files grant to "${role}", which is not a built-in role`);
 	}
-	const cache = createPermissionCache(options.cacheTtlMs ?? 30_000);
+	const cache = createPermissionCache(options.cacheTtlMs ?? 30_000, {
+		sharedCache: options.sharedCache,
+		localTtlMs: options.localCacheTtlMs,
+	});
 	const orgFor = (principal: Pick<Principal, "orgId">): string =>
 		principal.orgId ?? options.singleTenant ?? orgOf(principal);
 
@@ -149,7 +164,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 	async function effectivePermissions(principal: Who): Promise<EffectivePermissions> {
 		const orgId = orgFor(principal);
 		const implied = impliedRoles(principal);
-		const cached = cache.get(orgId, principal.userId, implied);
+		const cached = await cache.get(orgId, principal.userId, implied);
 		if (cached) return cached;
 
 		const [{ roles, grants }, overlays] = await Promise.all([
@@ -164,7 +179,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 			else all.push(grant);
 		}
 		const value = { grants: all, denies, roles };
-		cache.set(orgId, principal.userId, implied, value);
+		await cache.set(orgId, principal.userId, implied, value);
 		return value;
 	}
 
@@ -303,7 +318,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 			...(input.description === undefined ? {} : { description: input.description }),
 			...(input.grants ? { grants: validateGrants(input.grants, { allowMeta: false }) } : {}),
 		});
-		cache.invalidateAll();
+		await cache.invalidateAll();
 		const after = await customRole(orgId, roleId);
 		await audit({ orgId, actorId, changeType: "role_updated", before, after });
 		return after;
@@ -315,7 +330,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 			throw new ConflictError(`Role "${role.key}" is assigned to ${role.memberCount} member(s)`);
 		}
 		await store.deleteRole(roleId);
-		cache.invalidateAll();
+		await cache.invalidateAll();
 		await audit({ orgId, actorId, changeType: "role_deleted", before: role });
 	}
 
@@ -331,7 +346,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		const role = await store.findRole(orgId, roleId);
 		if (!role) throw new NotFoundError("Role");
 		const added = await store.assignRole(orgId, userId, roleId, actorId);
-		cache.invalidateMember(userId, orgId);
+		await cache.invalidateMember(userId, orgId);
 		if (added && actorId) {
 			await audit({
 				orgId,
@@ -366,7 +381,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 	async function revokeRole(actorId: string, orgId: string, userId: string, roleId: string) {
 		const removed = await store.revokeRole(orgId, userId, roleId);
 		if (!removed) throw new NotFoundError("Role assignment");
-		cache.invalidateMember(userId, orgId);
+		await cache.invalidateMember(userId, orgId);
 		await audit({
 			orgId,
 			actorId,
@@ -379,7 +394,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 	/** Removes all of a user's access in an org; called when they stop being a member. */
 	async function removeMemberAccess(orgId: string, userId: string, actorId = SYSTEM_ACTOR) {
 		const removed = await store.removeMember(orgId, userId);
-		cache.invalidateMember(userId, orgId);
+		await cache.invalidateMember(userId, orgId);
 		if (removed.roles + removed.overlays > 0) {
 			await audit({
 				orgId,
@@ -410,7 +425,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 			reason: input.reason ?? null,
 			expiresAt: input.expiresAt ?? null,
 		});
-		cache.invalidateMember(userId, orgId);
+		await cache.invalidateMember(userId, orgId);
 		if (actorId) {
 			await audit({
 				orgId,
@@ -426,7 +441,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 	async function removeOverlay(actorId: string, orgId: string, userId: string, overlayId: string) {
 		const removed = await store.removeOverlay(orgId, userId, overlayId);
 		if (!removed) throw new NotFoundError("Overlay");
-		cache.invalidateMember(userId, orgId);
+		await cache.invalidateMember(userId, orgId);
 		await audit({
 			orgId,
 			actorId,
@@ -474,7 +489,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 				updated.push(meta.key);
 			}
 		}
-		if (created.length || updated.length) cache.invalidateAll();
+		if (created.length || updated.length) await cache.invalidateAll();
 		return { created, updated };
 	}
 
