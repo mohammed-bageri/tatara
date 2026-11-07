@@ -1,5 +1,11 @@
 # @tatara/realtime
 
+## 0.1.1
+
+### Patch Changes
+
+- c0671ca: Publishing never throws or hangs: failures are logged and dropped
+
 ## 0.1.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @tatara/http
 
+## 0.1.5
+
+### Patch Changes
+
+- c0671ca: Cache OpenAPI document after first request, eliminating per-request rebuild cost
+
 ## 0.1.4
 
 ### Patch Changes

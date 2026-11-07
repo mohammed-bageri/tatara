@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/authz",
-	"version": "0.5.2",
+	"version": "0.6.0",
 	"description": "tatara authz: permission catalog, resolver, guards, role and member services, and routes",
 	"type": "module",
 	"license": "MIT",
@@ -48,7 +48,7 @@
 		"@tatara/auth": "^0.2.0",
 		"@tatara/core": "^0.1.3",
 		"@tatara/db": "^0.2.2",
-		"@tatara/http": "^0.1.2",
+		"@tatara/http": "^0.1.5",
 		"better-auth": "^1.7.8",
 		"drizzle-orm": "^0.45.4",
 		"hono": "^4.13.13",
