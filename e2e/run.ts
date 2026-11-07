@@ -495,7 +495,7 @@ const s = io(${JSON.stringify(base)}, { path: "/realtime", transports: ["websock
 const fail = setTimeout(() => { console.error("no event"); process.exit(1); }, 15000);
 s.on("connect_error", (e) => { console.error(e.message); process.exit(1); });
 s.on("connect", () => console.log("connected"));
-s.on("e2e.ping", (p) => { clearTimeout(fail); console.log(JSON.stringify(p)); process.exit(0); });`,
+s.on("rt", (m) => { if (m.ev !== "e2e.ping") return; clearTimeout(fail); console.log(JSON.stringify(m.data)); process.exit(0); });`,
 				],
 				{ cwd: dir },
 			);
