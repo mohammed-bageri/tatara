@@ -1,4 +1,4 @@
-import { boolean, index, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, index, json, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 const ts = () => timestamp({ mode: "date", fsp: 3 });
 
@@ -13,6 +13,10 @@ export const notifications = mysqlTable(
 		title: text().notNull(),
 		body: text(),
 		url: text(),
+		// keys and params, translated when the inbox is read (title is "" when only keys are given)
+		titleKey: varchar({ length: 255 }),
+		bodyKey: varchar({ length: 255 }),
+		params: json().$type<Record<string, string>>(),
 		inApp: boolean().notNull().default(true),
 		idempotencyKey: varchar({ length: 255 }).notNull().unique(),
 		// each channel is taken once, by a conditional update on its column
@@ -20,6 +24,11 @@ export const notifications = mysqlTable(
 		sentEmail: boolean().notNull().default(false),
 		sentSms: boolean().notNull().default(false),
 		sentPush: boolean().notNull().default(false),
+		// at-least-once channels: sent* marks them pending, delivered* once they went out
+		deliveredInApp: boolean().notNull().default(false),
+		deliveredEmail: boolean().notNull().default(false),
+		deliveredSms: boolean().notNull().default(false),
+		deliveredPush: boolean().notNull().default(false),
 		readAt: ts(),
 		createdAt: ts().notNull().defaultNow(),
 	},

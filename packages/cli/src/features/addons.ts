@@ -585,9 +585,13 @@ export const notifications: Feature = {
   \`#modules/notifications/services/notifier\`. \`to\` is \`{ user }\`, \`{ users }\`, \`{ role }\` or
   \`{ permission }\` (role and permission need organizations; permission needs authz).
 - A notification is \`notifications/<name>.ts\` in a module: \`defineNotification({ name, schema, channels,
-  inApp?, email?, sms?, push? })\`, each renderer taking \`(data, language)\`.
+  inApp?, email?, sms?, push? })\`, each renderer taking \`(data, language)\`. \`inApp\` returns text
+  (\`title\`, \`body\`) or keys (\`titleKey\`, \`bodyKey\`, \`params\`) that the inbox translates when
+  it's read, in the reader's language (\`services/translate.ts\`).
 - Delivery runs through jobs (\`notifications.fanout\`, then one \`notifications.deliver\` per user); each
   channel goes out once per recipient, and the same \`idempotencyKey\` never notifies anyone twice.
+  Channels are at most once (a crash mid-send loses that send); list one in the notifier's
+  \`delivery\` as \`"at-least-once"\` to resend it after a crash, with a stable idempotency key per send.
   Pass \`executor\` (with the Postgres jobs driver) to send only if your transaction commits.
 - The rules are the app's: \`allow({ userId, notification, channel, data })\` in the notifier decides
   who gets which channel (store preferences in your own table); the inbox routes and tables are

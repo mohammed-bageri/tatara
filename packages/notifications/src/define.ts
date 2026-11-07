@@ -3,12 +3,34 @@ import type { z } from "zod";
 export const CHANNELS = ["in-app", "email", "sms", "push"] as const;
 export type Channel = (typeof CHANNELS)[number];
 
-export interface InAppContent {
-	title: string;
-	body?: string;
+/** Values for a translated string's `{name}` placeholders. */
+export type NotificationParams = Record<string, string>;
+
+/**
+ * Turns a stored key into text in `language`; `fallback` is the stored text, or the key. With
+ * `@tatara/i18n`: `(language, key, params, fallback) => t(language, key, fallback, params)`.
+ */
+export type Translate = (
+	language: string,
+	key: string,
+	params: NotificationParams,
+	fallback: string,
+) => string;
+
+/**
+ * The inbox entry: rendered text (`title`, `body`), or keys and params (`titleKey`, `bodyKey`,
+ * `params`) the inbox translates when it's read, in the reader's language. Give both and the
+ * text is the fallback for a key with no translation.
+ */
+export type InAppContent = {
 	/** where the app should take the user, e.g. "/invoices/123" */
 	url?: string;
-}
+	bodyKey?: string;
+	params?: NotificationParams;
+} & (
+	| { title: string; body?: string; titleKey?: string }
+	| { titleKey: string; title?: string; body?: string }
+);
 
 export interface EmailContent {
 	subject: string;

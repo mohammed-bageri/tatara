@@ -1,11 +1,14 @@
 import type { Channel } from "./define.ts";
 import type { NotificationRow, NotificationStore } from "./store.ts";
 
+/** `sent`: channels taken (or pending, at-least-once); `delivered`: at-least-once channels that went out */
+type Row = NotificationRow & { key: string; inApp: boolean; sent: Channel[]; delivered: Channel[] };
+
 /** An in-process store for tests. */
 export function memoryNotificationStore(): NotificationStore & {
-	rows: (NotificationRow & { key: string; inApp: boolean; sent: Channel[] })[];
+	rows: Row[];
 } {
-	const rows: (NotificationRow & { key: string; inApp: boolean; sent: Channel[] })[] = [];
+	const rows: Row[] = [];
 	const tokens = new Map<string, { userId: string; device: string | null }>();
 	const mine = (orgId: string, userId: string) =>
 		rows.filter((r) => r.orgId === orgId && r.userId === userId && r.inApp);
@@ -22,11 +25,15 @@ export function memoryNotificationStore(): NotificationStore & {
 				title: row.inApp?.title ?? "",
 				body: row.inApp?.body ?? null,
 				url: row.inApp?.url ?? null,
+				titleKey: row.inApp?.titleKey ?? null,
+				bodyKey: row.inApp?.bodyKey ?? null,
+				params: row.inApp?.params ?? null,
 				readAt: null,
 				createdAt: new Date(),
 				key: row.idempotencyKey,
 				inApp: row.inApp !== null,
 				sent: [],
+				delivered: [],
 			});
 			return { id: row.id };
 		},
@@ -39,6 +46,16 @@ export function memoryNotificationStore(): NotificationStore & {
 		async releaseChannel(id, channel) {
 			const row = rows.find((r) => r.id === id);
 			if (row) row.sent = row.sent.filter((c) => c !== channel);
+		},
+		async claimPending(id, channel) {
+			const row = rows.find((r) => r.id === id);
+			if (!row || row.delivered.includes(channel)) return false;
+			if (!row.sent.includes(channel)) row.sent.push(channel);
+			return true;
+		},
+		async markSent(id, channel) {
+			const row = rows.find((r) => r.id === id);
+			if (row && !row.delivered.includes(channel)) row.delivered.push(channel);
 		},
 		async list(orgId, userId, { limit, before, unreadOnly }) {
 			return mine(orgId, userId)

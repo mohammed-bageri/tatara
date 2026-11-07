@@ -8,7 +8,15 @@ const COLUMN = {
 	push: "sentPush",
 } as const satisfies Record<Channel, string>;
 
-type NotificationRecord = NotificationRow;
+/** at-least-once channels that went out; `sent*` then means taken or pending */
+const DELIVERED = {
+	"in-app": "deliveredInApp",
+	email: "deliveredEmail",
+	sms: "deliveredSms",
+	push: "deliveredPush",
+} as const satisfies Record<Channel, string>;
+
+type NotificationRecord = NotificationRow & Partial<Record<(typeof DELIVERED)[Channel], boolean>>;
 
 /** The two delegates the store uses, as Prisma generates them from the app's models. */
 export interface PrismaNotificationClient {
@@ -49,6 +57,10 @@ export function prismaNotificationStore(client: unknown): NotificationStore {
 						title: row.inApp?.title ?? "",
 						body: row.inApp?.body ?? null,
 						url: row.inApp?.url ?? null,
+						// only when given, so a model from before keys still takes text notifications
+						...(row.inApp?.titleKey ? { titleKey: row.inApp.titleKey } : {}),
+						...(row.inApp?.bodyKey ? { bodyKey: row.inApp.bodyKey } : {}),
+						...(row.inApp?.params ? { params: row.inApp.params } : {}),
 						inApp: row.inApp !== null,
 						idempotencyKey: row.idempotencyKey,
 					},
@@ -73,6 +85,17 @@ export function prismaNotificationStore(client: unknown): NotificationStore {
 		},
 		async releaseChannel(id, channel) {
 			await db.notification.updateMany({ where: { id }, data: { [COLUMN[channel]]: false } });
+		},
+		async claimPending(id, channel) {
+			await db.notification.updateMany({ where: { id }, data: { [COLUMN[channel]]: true } });
+			const row = await db.notification.findUnique({
+				where: { id },
+				select: { [DELIVERED[channel]]: true },
+			});
+			return row !== null && !row[DELIVERED[channel]];
+		},
+		async markSent(id, channel) {
+			await db.notification.updateMany({ where: { id }, data: { [DELIVERED[channel]]: true } });
 		},
 		async list(orgId, userId, { limit, before, unreadOnly }) {
 			const rows = await db.notification.findMany({
@@ -99,6 +122,9 @@ export function prismaNotificationStore(client: unknown): NotificationStore {
 				title: r.title,
 				body: r.body,
 				url: r.url,
+				titleKey: r.titleKey ?? null,
+				bodyKey: r.bodyKey ?? null,
+				params: r.params ?? null,
 				readAt: r.readAt,
 				createdAt: r.createdAt,
 			}));
