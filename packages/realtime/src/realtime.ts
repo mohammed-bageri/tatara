@@ -35,6 +35,8 @@ export interface RealtimeOptions {
 	 * reconnects with a new ticket, so a user who lost access is checked again.
 	 */
 	maxSocketLifetimeMs?: number;
+	/** Longest a publish waits for the adapter before giving up and logging (default 1000 ms). */
+	publishTimeoutMs?: number;
 	logger: CoreLogger;
 }
 
@@ -98,10 +100,23 @@ export function createRealtime(options: RealtimeOptions) {
 		});
 		return emitter;
 	};
+	const publishTimeoutMs = options.publishTimeoutMs ?? 1000;
+	// Bound a wait; the timer is cleared either way so publishes leave nothing behind.
+	const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error("publish flush timeout")), timeoutMs);
+		});
+		return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+	};
 	const send = async (fn: (emitter: Emitter) => unknown) => {
 		const { emitter: e, flush } = await target();
 		fn(e);
-		await flush();
+		try {
+			await withTimeout(flush(), publishTimeoutMs);
+		} catch (err) {
+			options.logger.warn({ err }, "realtime publish flush failed");
+		}
 	};
 
 	async function issueTicket(

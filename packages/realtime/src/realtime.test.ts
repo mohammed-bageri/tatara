@@ -288,7 +288,12 @@ describe.skipIf(!REDIS_URL)("realtime across processes (Redis)", { timeout: 20_0
 		expect(await both).toEqual([{ n: 1 }, { n: 1 }]);
 	});
 
-	it("rejects a publish when Redis is down, instead of crashing the process", async () => {
+	it("logs and drops a publish when Redis ping rejects, never throwing to the caller", async () => {
+		const warnings: unknown[] = [];
+		const testLogger = pino({
+			level: "warn",
+			hooks: { logMethod: (args, method) => (warnings.push(args[0]), method.apply(this, args)) },
+		});
 		const worker = createRealtime({
 			driver: "socketio",
 			adapter: {
@@ -304,15 +309,44 @@ describe.skipIf(!REDIS_URL)("realtime across processes (Redis)", { timeout: 20_0
 			},
 			tickets: memoryTickets(),
 			allowOrigin: () => true,
-			logger,
+			logger: testLogger,
 		});
 		const unhandled: unknown[] = [];
 		const onUnhandled = (e: unknown) => unhandled.push(e);
 		process.on("unhandledRejection", onUnhandled);
 		cleanups.push(() => process.off("unhandledRejection", onUnhandled));
-		await expect(worker.publishToUser("o1", "u1", "x", {})).rejects.toThrow();
+		await worker.publishToUser("o1", "u1", "x", {});
 		await new Promise((r) => setTimeout(r, 100));
 		expect(unhandled).toEqual([]);
+		expect(warnings.some((w: any) => w?.err)).toBe(true);
+	});
+
+	it("logs and drops a publish when Redis ping hangs, resolving quickly", async () => {
+		const warnings: unknown[] = [];
+		const testLogger = pino({
+			level: "warn",
+			hooks: { logMethod: (args, method) => (warnings.push(args[0]), method.apply(this, args)) },
+		});
+		const worker = createRealtime({
+			driver: "socketio",
+			adapter: {
+				kind: "redis",
+				redis: () => {
+					const client = new Redis("redis://localhost:1", { lazyConnect: true });
+					client.ping = (() => new Promise(() => {})) as typeof client.ping;
+					cleanups.push(() => client.disconnect());
+					return client;
+				},
+			},
+			tickets: memoryTickets(),
+			allowOrigin: () => true,
+			logger: testLogger,
+		});
+		const start = Date.now();
+		await worker.publishToUser("o1", "u1", "x", {});
+		const elapsed = Date.now() - start;
+		expect(elapsed).toBeLessThan(2000);
+		expect(warnings.some((w: any) => w?.err?.message?.includes("timeout"))).toBe(true);
 	});
 
 	it("has sent the event by the time publish resolves, so a short-lived process can exit", async () => {
