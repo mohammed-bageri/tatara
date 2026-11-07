@@ -1,5 +1,11 @@
 # @tatara/observability
 
+## 0.3.0
+
+### Minor Changes
+
+- fae0975: `startTelemetry({ spanProcessors })`: the app's span processors run on every span before it is exported (e.g. to redact secrets from URLs).
+
 ## 0.2.0
 
 ### Minor Changes

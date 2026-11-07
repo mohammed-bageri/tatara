@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/observability",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "tatara observability: OpenTelemetry traces and metrics over OTLP, Hono tracing, trace ids in logs",
 	"type": "module",
 	"license": "MIT",
