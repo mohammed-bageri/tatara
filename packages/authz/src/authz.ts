@@ -10,7 +10,7 @@ import {
 } from "@tatara/http";
 import type { Env, MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
-import { createPermissionCache } from "./cache.ts";
+import { createPermissionCache, type PermissionCacheOptions } from "./cache.ts";
 import { assertGrantValid, type Catalog, InvalidGrantError, META_RESOURCES } from "./catalog.ts";
 import {
 	type AuditChangeType,
@@ -67,6 +67,10 @@ export interface AuthzOptions {
 	 * a shared cache.
 	 */
 	localCacheTtlMs?: number;
+	/** after every cache invalidation, e.g. to drop a revoked member's realtime connections */
+	onInvalidate?: PermissionCacheOptions["onInvalidate"];
+	/** a shared-cache failure; checks read the store instead, so log it */
+	onCacheError?: PermissionCacheOptions["onError"];
 	/**
 	 * Single-tenant apps: the one org every check runs in. Without it, a check with no org is a
 	 * 400 ORG_REQUIRED; nothing falls back to a default org.
@@ -138,6 +142,8 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 	const cache = createPermissionCache(options.cacheTtlMs ?? 30_000, {
 		sharedCache: options.sharedCache,
 		localTtlMs: options.localCacheTtlMs,
+		onInvalidate: options.onInvalidate,
+		onError: options.onCacheError,
 	});
 	const orgFor = (principal: Pick<Principal, "orgId">): string =>
 		principal.orgId ?? options.singleTenant ?? orgOf(principal);

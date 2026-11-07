@@ -11,7 +11,12 @@ export {
 	type RoleInput,
 	type SystemRole,
 } from "./authz.ts";
-export { createPermissionCache, type PermissionCache } from "./cache.ts";
+export {
+	createPermissionCache,
+	type PermissionCache,
+	type PermissionCacheOptions,
+	type PermissionInvalidation,
+} from "./cache.ts";
 export {
 	type ActionSpec,
 	assertGrantValid,
