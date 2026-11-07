@@ -41,7 +41,7 @@
   "@tatara/storage": "0.2.0",
   "@tatara/email": "0.3.0",
   "@tatara/i18n": "0.1.0",
-  "@tatara/jobs": "0.5.0",
+  "@tatara/jobs": "0.5.1",
   "@tatara/cache": "0.2.0",
   "openapi-typescript": "7.13.0",
   "kafkajs": "2.2.4",
