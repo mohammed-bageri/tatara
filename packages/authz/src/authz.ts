@@ -26,6 +26,7 @@ import {
 	type EffectivePermissions,
 	grantKey,
 	type PermissionGrant,
+	type RoleLabels,
 	type RoleRow,
 } from "./types.ts";
 
@@ -42,6 +43,7 @@ export interface SystemRole {
 	readonly key: string;
 	readonly name: string;
 	readonly description: string;
+	readonly labels?: RoleLabels;
 	/**
 	 * Who holds it without an assignment: `"members"`, every member of the org the caller acts in;
 	 * `"identity"`, anyone whose identity-provider roles include the key (staff, Keycloak roles).
@@ -78,8 +80,8 @@ export interface AuthzOptions {
 	 */
 	singleTenant?: string;
 	/**
-	 * Whether a user may hold roles in an org at all, checked by `setMemberRoles` and
-	 * `addRolesToMembers`: return a reason to refuse (e.g. "Candidates cannot hold org roles").
+	 * Whether a user may hold roles or overlays in an org at all, checked by `setMemberRoles`,
+	 * `addRolesToMembers` and `addOverlay`: return a reason to refuse (e.g. "Not a member").
 	 */
 	canHoldRoles?: (orgId: string, userId: string) => Promise<string | null> | string | null;
 	/**
@@ -93,6 +95,7 @@ export interface RoleInput {
 	key: string;
 	name: string;
 	description?: string | null;
+	labels?: RoleLabels;
 	grants: { resource: string; action: string; scope?: string | null }[];
 }
 
@@ -315,6 +318,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 			key: input.key,
 			name: input.name,
 			description: input.description ?? null,
+			...(input.labels ? { labels: input.labels } : {}),
 			isSystem: false,
 			grants,
 		});
@@ -334,6 +338,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		await store.updateRole(roleId, {
 			...(input.name === undefined ? {} : { name: input.name }),
 			...(input.description === undefined ? {} : { description: input.description }),
+			...(input.labels === undefined ? {} : { labels: input.labels }),
 			...(input.grants ? { grants: validateGrants(input.grants, { allowMeta: false }) } : {}),
 		});
 		await cache.invalidateAll();
@@ -434,6 +439,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 	) {
 		const [grant] = validateGrants([input], { allowMeta: input.effect === "deny" });
 		if (!grant) throw new NotFoundError("Permission");
+		await refuseUnfitHolder(orgId, userId);
 		const id = await store.addOverlay({
 			orgId,
 			userId,
@@ -647,6 +653,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 					key: meta.key,
 					name: meta.name,
 					description: meta.description,
+					...(meta.labels ? { labels: meta.labels } : {}),
 					isSystem: true,
 					grants,
 				});
@@ -656,10 +663,17 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 			const want = new Set(grants.map(grantKey));
 			const have = new Set(existing.grants.map(grantKey));
 			const same = want.size === have.size && [...want].every((k) => have.has(k));
-			if (!same || existing.name !== meta.name || existing.description !== meta.description) {
+			const relabel = meta.labels !== undefined && !sameLabels(existing.labels, meta.labels);
+			if (
+				!same ||
+				relabel ||
+				existing.name !== meta.name ||
+				existing.description !== meta.description
+			) {
 				await store.updateRole(existing.id, {
 					name: meta.name,
 					description: meta.description,
+					...(meta.labels ? { labels: meta.labels } : {}),
 					grants,
 				});
 				updated.push(meta.key);
@@ -750,4 +764,11 @@ export function authzOrganizationHooks(
 			await authz.removeMemberAccess(member.organizationId, member.userId);
 		},
 	};
+}
+
+function sameLabels(a: RoleLabels, b: RoleLabels): boolean {
+	const locales = new Set([...Object.keys(a), ...Object.keys(b)]);
+	return [...locales].every(
+		(l) => a[l]?.name === b[l]?.name && (a[l]?.description ?? null) === (b[l]?.description ?? null),
+	);
 }

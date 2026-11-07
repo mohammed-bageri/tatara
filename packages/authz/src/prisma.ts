@@ -2,6 +2,7 @@ import { newId } from "@tatara/db";
 import type { OverlayEffect, Scope } from "./constants.ts";
 import { SYSTEM_ORG_ID } from "./constants.ts";
 import type { AuthzStore, OverlayRow, PermissionGrant, RoleRow } from "./types.ts";
+import { parseLabels } from "./types.ts";
 
 interface OverlayRecord {
 	id: string;
@@ -23,6 +24,8 @@ interface RoleRecord {
 	key: string;
 	name: string;
 	description: string | null;
+	/** JSON text; absent when the model has no `labels` field */
+	labels?: string | null;
 	isSystem: boolean;
 	permissions: { resource: string; action: string; scope: string }[];
 	_count: { members: number };
@@ -91,6 +94,7 @@ export function prismaAuthzStore(
 			key: role.key,
 			name: role.name,
 			description: role.description,
+			labels: parseLabels(role.labels),
 			isSystem: role.isSystem,
 			grants: role.permissions.map((g) => ({
 				resource: g.resource,
@@ -175,6 +179,7 @@ export function prismaAuthzStore(
 					key: input.key,
 					name: input.name,
 					description: input.description,
+					...(input.labels ? { labels: JSON.stringify(input.labels) } : {}),
 					isSystem: input.isSystem,
 					permissions: { create: grantRows(input.grants) },
 				},
@@ -189,6 +194,7 @@ export function prismaAuthzStore(
 					data: {
 						...(input.name === undefined ? {} : { name: input.name }),
 						...(input.description === undefined ? {} : { description: input.description }),
+						...(input.labels === undefined ? {} : { labels: JSON.stringify(input.labels) }),
 					},
 				});
 				if (input.grants) {

@@ -1,6 +1,13 @@
 /** An in-memory AuthzStore with the same semantics as the generated ORM stores, for unit tests. */
 import { SYSTEM_ORG_ID } from "./constants.ts";
-import type { AuditRow, AuthzStore, OverlayRow, PermissionGrant, RoleRow } from "./types.ts";
+import type {
+	AuditRow,
+	AuthzStore,
+	OverlayRow,
+	PermissionGrant,
+	RoleLabels,
+	RoleRow,
+} from "./types.ts";
 
 interface StoredRole {
 	id: string;
@@ -8,6 +15,7 @@ interface StoredRole {
 	key: string;
 	name: string;
 	description: string | null;
+	labels: RoleLabels;
 	isSystem: boolean;
 	grants: PermissionGrant[];
 }
@@ -22,6 +30,7 @@ export function memoryAuthzStore(): AuthzStore {
 
 	const toRow = (role: StoredRole, orgId: string): RoleRow => ({
 		...role,
+		labels: structuredClone(role.labels),
 		grants: role.grants.map((g) => ({ ...g })),
 		memberCount: members.filter((m) => m.roleId === role.id && m.orgId === orgId).length,
 	});
@@ -62,7 +71,12 @@ export function memoryAuthzStore(): AuthzStore {
 		},
 		async createRole(input) {
 			const roleId = id();
-			roles.push({ ...input, id: roleId, grants: input.grants.map((g) => ({ ...g })) });
+			roles.push({
+				...input,
+				labels: structuredClone(input.labels ?? {}),
+				id: roleId,
+				grants: input.grants.map((g) => ({ ...g })),
+			});
 			return roleId;
 		},
 		async updateRole(roleId, input) {
@@ -70,6 +84,7 @@ export function memoryAuthzStore(): AuthzStore {
 			if (!role) return;
 			if (input.name !== undefined) role.name = input.name;
 			if (input.description !== undefined) role.description = input.description;
+			if (input.labels !== undefined) role.labels = structuredClone(input.labels);
 			if (input.grants) role.grants = input.grants.map((g) => ({ ...g }));
 		},
 		async deleteRole(roleId) {

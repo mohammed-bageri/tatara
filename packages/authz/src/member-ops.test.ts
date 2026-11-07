@@ -252,3 +252,56 @@ describe("syncSystemRoles", () => {
 		expect((await authz.getMember("org1", "u1")).roles.map((r) => r.key)).toEqual(["legacy"]);
 	});
 });
+
+describe("role labels", () => {
+	it("keeps a custom role's other-language name through create, update and duplicate", async () => {
+		const ar = { name: "مراجع", description: "يقرأ التقارير" };
+		const role = await authz.createRole("actor", "org1", {
+			key: "reviewer",
+			name: "Reviewer",
+			labels: { ar },
+			grants: [],
+		});
+		expect(role.labels).toEqual({ ar });
+		const renamed = await authz.updateRole("actor", "org1", role.id, {
+			labels: { ar: { name: "مدقق", description: null } },
+		});
+		expect(renamed.labels).toEqual({ ar: { name: "مدقق", description: null } });
+		expect(renamed.name).toBe("Reviewer");
+		const copy = await authz.duplicateRole("actor", "org1", role.id, {
+			key: "reviewer_2",
+			name: "Reviewer 2",
+			labels: { ar: { name: "مدقق ٢", description: null } },
+		});
+		expect(copy.labels.ar?.name).toBe("مدقق ٢");
+	});
+
+	it("syncs built-in roles' labels, and leaves them alone when the code gives none", async () => {
+		const labelled = createAuthz<Key>({
+			store: authz.store,
+			catalog,
+			systemRoles: SYSTEM_ROLES.map((r) =>
+				r.key === "admin" ? { ...r, labels: { ar: { name: "مدير", description: null } } } : r,
+			),
+		});
+		expect((await labelled.syncSystemRoles()).updated).toEqual(["admin"]);
+		expect((await labelled.syncSystemRoles()).updated).toEqual([]);
+		expect((await authz.store.findRoleByKey(SYSTEM_ORG_ID, "admin"))?.labels.ar?.name).toBe("مدير");
+		// the unlabelled instance does not wipe them
+		expect((await authz.syncSystemRoles()).updated).toEqual([]);
+	});
+});
+
+describe("addOverlay", () => {
+	it("refuses a user the app says cannot hold permissions", async () => {
+		refused.add("outsider");
+		await expect(
+			authz.addOverlay("actor", "org1", "outsider", {
+				resource: "doc",
+				action: "read",
+				scope: "org",
+				effect: "grant",
+			}),
+		).rejects.toThrow(/cannot hold/);
+	});
+});

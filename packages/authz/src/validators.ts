@@ -9,12 +9,23 @@ export const grantSchema = z
 	})
 	.openapi("PermissionGrant");
 
+export const roleLabelsSchema = z
+	.record(
+		z.string().min(2).max(16),
+		z.object({
+			name: z.string().trim().min(1).max(120),
+			description: z.string().max(1000).nullable(),
+		}),
+	)
+	.openapi("RoleLabels");
+
 export const roleSchema = z
 	.object({
 		id: z.string(),
 		key: z.string(),
 		name: z.string(),
 		description: z.string().nullable(),
+		labels: roleLabelsSchema,
 		isSystem: z.boolean(),
 		grants: z.array(grantSchema),
 		memberCount: z.number().int(),
@@ -26,6 +37,7 @@ export const createRoleSchema = z
 		key: z.string().regex(/^[a-z][a-z0-9_]{1,62}$/, "lowercase letters, digits and underscores"),
 		name: z.string().trim().min(1).max(120),
 		description: z.string().max(1000).nullable().optional(),
+		labels: roleLabelsSchema.optional(),
 		grants: z.array(grantSchema).default([]),
 	})
 	.openapi("CreateRole");
