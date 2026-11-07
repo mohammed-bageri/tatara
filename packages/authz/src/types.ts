@@ -17,12 +17,16 @@ export interface OverlayRow extends PermissionGrant {
 	createdAt: Date;
 }
 
+/** A role's name and description in other languages, by locale (e.g. `{ ar: { name, description } }`). */
+export type RoleLabels = Record<string, { name: string; description: string | null }>;
+
 export interface RoleRow {
 	id: string;
 	orgId: string;
 	key: string;
 	name: string;
 	description: string | null;
+	labels: RoleLabels;
 	isSystem: boolean;
 	grants: PermissionGrant[];
 	memberCount: number;
@@ -82,12 +86,19 @@ export interface AuthzStore {
 		key: string;
 		name: string;
 		description: string | null;
+		/** stored only when given, so tables without a `labels` column keep working */
+		labels?: RoleLabels;
 		isSystem: boolean;
 		grants: PermissionGrant[];
 	}): Promise<string>;
 	updateRole(
 		roleId: string,
-		input: { name?: string; description?: string | null; grants?: PermissionGrant[] },
+		input: {
+			name?: string;
+			description?: string | null;
+			labels?: RoleLabels;
+			grants?: PermissionGrant[];
+		},
 	): Promise<void>;
 	deleteRole(roleId: string): Promise<void>;
 	/** How many members hold the role, across every org. */
@@ -122,4 +133,14 @@ export interface AuthzStore {
 	writeAudit(input: Omit<AuditRow, "id" | "at">): Promise<void>;
 	/** newest first; with `before`, only entries older than that cursor */
 	listAudit(orgId: string, limit: number, before?: AuditCursor): Promise<AuditRow[]>;
+}
+
+/** Labels as stored (JSON text) to `RoleLabels`; empty when absent or unreadable. */
+export function parseLabels(text: string | null | undefined): RoleLabels {
+	if (!text) return {};
+	try {
+		return JSON.parse(text) as RoleLabels;
+	} catch {
+		return {};
+	}
 }

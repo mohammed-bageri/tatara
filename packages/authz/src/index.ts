@@ -52,6 +52,7 @@ export {
 	grantKey,
 	type OverlayRow,
 	type PermissionGrant,
+	type RoleLabels,
 	type RoleRow,
 } from "./types.ts";
 export * from "./validators.ts";

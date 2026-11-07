@@ -3,6 +3,7 @@ import { and, count, desc, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
 import type { OverlayEffect, Scope } from "./constants.ts";
 import { SYSTEM_ORG_ID } from "./constants.ts";
 import type { AuditRow, AuthzStore, OverlayRow, PermissionGrant, RoleRow } from "./types.ts";
+import { parseLabels } from "./types.ts";
 
 /** The app's authz tables (src/core/authz/db/authz.schema.ts), Postgres or MySQL. */
 export interface DrizzleAuthzTables {
@@ -31,6 +32,8 @@ export function drizzleAuthzStore(db: any, tables: DrizzleAuthzTables): AuthzSto
 		key: string;
 		name: string;
 		description: string | null;
+		/** JSON text; absent when the table has no `labels` column */
+		labels?: string | null;
 		isSystem: boolean;
 	};
 	type OverlayRecord = Omit<OverlayRow, "scope" | "effect"> & { scope: string; effect: string };
@@ -61,6 +64,7 @@ export function drizzleAuthzStore(db: any, tables: DrizzleAuthzTables): AuthzSto
 			key: role.key,
 			name: role.name,
 			description: role.description,
+			labels: parseLabels(role.labels),
 			isSystem: role.isSystem,
 			grants: grants
 				.filter((g: GrantRecord) => g.roleId === role.id)
@@ -172,6 +176,7 @@ export function drizzleAuthzStore(db: any, tables: DrizzleAuthzTables): AuthzSto
 				key: input.key,
 				name: input.name,
 				description: input.description,
+				...(input.labels ? { labels: JSON.stringify(input.labels) } : {}),
 				isSystem: input.isSystem,
 			});
 			await insertGrants(id, input.grants);
@@ -182,6 +187,7 @@ export function drizzleAuthzStore(db: any, tables: DrizzleAuthzTables): AuthzSto
 			const fields = {
 				...(input.name === undefined ? {} : { name: input.name }),
 				...(input.description === undefined ? {} : { description: input.description }),
+				...(input.labels === undefined ? {} : { labels: JSON.stringify(input.labels) }),
 			};
 			await db
 				.update(authzRoles)

@@ -13,6 +13,8 @@ export const authzRoles = mysqlTable(
 		key: varchar({ length: 64 }).notNull(),
 		name: varchar({ length: 120 }).notNull(),
 		description: text(),
+		/** name and description in other languages, JSON: { ar: { name, description } } */
+		labels: text(),
 		isSystem: boolean().notNull().default(false),
 		createdAt: ts().notNull().defaultNow(),
 		updatedAt: ts().notNull().defaultNow(),
