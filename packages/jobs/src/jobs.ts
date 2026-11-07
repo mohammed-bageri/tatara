@@ -10,6 +10,8 @@ import type { JobDriver } from "./driver.ts";
 export interface EnqueueOptions {
 	/** the org the job acts for (default: none, platform work) */
 	orgId?: string | null;
+	/** the request enqueuing it: the job's logs and context carry it */
+	requestId?: string | null;
 	/** wait this long before the first run */
 	delayMs?: number;
 	/** the caller's transaction: with the Postgres driver the job commits (or not) with it */
@@ -65,6 +67,7 @@ export function createJobs<Topics extends object = Record<string, unknown>>(opti
 				topic,
 				data,
 				orgId: opts.orgId ?? null,
+				...(opts.requestId ? { requestId: opts.requestId } : {}),
 				attempt: 1,
 				maxAttempts: consumer?.attempts ?? DEFAULT_ATTEMPTS,
 				enqueuedAt: new Date().toISOString(),

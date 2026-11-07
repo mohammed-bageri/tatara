@@ -23,6 +23,7 @@ interface Row {
 	topic: string;
 	data: unknown;
 	org_id: string | null;
+	request_id: string | null;
 	attempt: number;
 	max_attempts: number;
 	enqueued_at: Date | string;
@@ -34,6 +35,7 @@ const toJob = (row: Row): JobEnvelope => ({
 	topic: row.topic,
 	data: row.data,
 	orgId: row.org_id,
+	requestId: row.request_id,
 	attempt: row.attempt,
 	maxAttempts: row.max_attempts,
 	enqueuedAt: new Date(row.enqueued_at).toISOString(),
@@ -58,6 +60,7 @@ export function postgresDriver(options: PostgresDriverOptions): JobDriver {
 					topic text not null,
 					data jsonb not null,
 					org_id text,
+					request_id text,
 					attempt integer not null,
 					max_attempts integer not null,
 					enqueued_at timestamptz not null,
@@ -68,6 +71,7 @@ export function postgresDriver(options: PostgresDriverOptions): JobDriver {
 					last_error text
 				)`);
 				await db.query(`alter table ${TABLE} add column if not exists claim_token text`);
+				await db.query(`alter table ${TABLE} add column if not exists request_id text`);
 				await db.query(
 					`create index if not exists jobs_due on ${TABLE} (run_at) where dead_at is null`,
 				);
@@ -95,16 +99,17 @@ export function postgresDriver(options: PostgresDriverOptions): JobDriver {
 					job.topic,
 					JSON.stringify(job.data),
 					job.orgId,
+					job.requestId ?? null,
 					job.attempt,
 					job.maxAttempts,
 					job.enqueuedAt,
 					delayMs,
 				);
 				const p = (n: number) => `$${at + n}`;
-				return `(${p(1)}, ${p(2)}, ${p(3)}::jsonb, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}::timestamptz, now() + ${p(8)}::bigint * interval '1 millisecond')`;
+				return `(${p(1)}, ${p(2)}, ${p(3)}::jsonb, ${p(4)}, ${p(5)}, ${p(6)}, ${p(7)}, ${p(8)}::timestamptz, now() + ${p(9)}::bigint * interval '1 millisecond')`;
 			});
 			await ((executor as Queryable | undefined) ?? db).query(
-				`insert into ${TABLE} (id, topic, data, org_id, attempt, max_attempts, enqueued_at, run_at) values ${rows.join(", ")}`,
+				`insert into ${TABLE} (id, topic, data, org_id, request_id, attempt, max_attempts, enqueued_at, run_at) values ${rows.join(", ")}`,
 				values,
 			);
 		},
