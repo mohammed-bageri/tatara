@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -115,5 +115,37 @@ describe("sync: commands from packages", () => {
 		expect(generated(root, "commands.ts")).toContain(
 			"export const commands: CommandDefinition[] = [];",
 		);
+	});
+});
+
+describe("sync: seeds", () => {
+	function dbApp(dependencies: Record<string, string>) {
+		return app({
+			"package.json": JSON.stringify({ name: "app", dependencies }),
+			"tatara.json": JSON.stringify({
+				version: "0.14.0",
+				name: "app",
+				orm: "drizzle",
+				database: "postgres",
+				auth: "none",
+				authMethods: [],
+				addons: [],
+				packageManager: "pnpm",
+			}),
+		});
+	}
+
+	it("lists the seeds when the app runs them through @tatara/db", async () => {
+		const root = dbApp({ "@tatara/db": "^0.2.0" });
+		await sync(loadProject(root));
+		expect(generated(root, "seeds.ts")).toContain(
+			'import type { SeedDefinition } from "@tatara/db";',
+		);
+	});
+
+	it("writes no seeds list for an app with a database but not @tatara/db", async () => {
+		const root = dbApp({ "drizzle-orm": "^0.45.0" });
+		await sync(loadProject(root));
+		expect(existsSync(join(root, "src/generated/seeds.ts"))).toBe(false);
 	});
 });

@@ -106,20 +106,26 @@ interface Contribution {
 type ContributionKind = "commands" | "seeds";
 
 /** What the app's installed (or ejected) @tatara/* packages contribute, by package name. */
-async function contributions(project: Project, kind: ContributionKind): Promise<Contribution[]> {
+/** The `@tatara/*` packages the app installs or has ejected, by short name ("db", "email"). */
+async function tataraPackages(project: Project): Promise<string[]> {
 	const pkg = JSON.parse(await readFile(join(project.root, "package.json"), "utf8")) as {
 		dependencies?: Record<string, string>;
 		devDependencies?: Record<string, string>;
 	};
-	const ejected = ejectedPackages(project.config);
 	const names = [
 		...Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
 			.filter((n) => n.startsWith("@tatara/"))
 			.map((n) => n.slice("@tatara/".length)),
-		...ejected,
+		...ejectedPackages(project.config),
 	];
+	return [...new Set(names)].sort();
+}
+
+async function contributions(project: Project, kind: ContributionKind): Promise<Contribution[]> {
+	const ejected = ejectedPackages(project.config);
+	const names = await tataraPackages(project);
 	const out: Contribution[] = [];
-	for (const name of [...new Set(names)].sort()) {
+	for (const name of names) {
 		// eject keeps the manifest next to the copy
 		const file = ejected.includes(name)
 			? join(project.root, "src/ejected", name, "tatara-package.json")
@@ -298,7 +304,8 @@ export type PermissionKey =
 		);
 	}
 
-	if (project.config.database !== "none") {
+	// the seed runner and SeedDefinition are @tatara/db's: an app on its own database client has neither
+	if (project.config.database !== "none" && (await tataraPackages(project)).includes("db")) {
 		const seeds = await find(
 			root,
 			dirs.map((d) => `${d}/db/seed.ts`),
