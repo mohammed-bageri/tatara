@@ -47,6 +47,7 @@ interface Model<Row> {
 	update(args: object): Promise<unknown>;
 	delete(args: object): Promise<unknown>;
 	deleteMany(args: object): Promise<{ count: number }>;
+	count(args: object): Promise<number>;
 }
 
 /** What the store needs from the app's PrismaClient: the models in prisma/models/authz.prisma. */
@@ -201,6 +202,10 @@ export function prismaAuthzStore(
 
 		async deleteRole(roleId) {
 			await db.authzRole.delete({ where: { id: roleId } });
+		},
+
+		async roleAssignmentCount(roleId) {
+			return db.authzMemberRole.count({ where: { roleId } });
 		},
 
 		async memberRoles(orgId, userId) {

@@ -39,6 +39,11 @@ export function authzCommands({ authz }: { authz: AnyAuthz }): CommandDefinition
 			async run(_args, { logger }) {
 				const result = await authz.syncSystemRoles();
 				logger.info(result, "built-in roles in sync");
+				if (result.kept.length)
+					logger.warn(
+						{ kept: result.kept },
+						"built-in roles no longer in the code are still assigned: reassign their members, then sync again",
+					);
 			},
 		}),
 	] as CommandDefinition[];

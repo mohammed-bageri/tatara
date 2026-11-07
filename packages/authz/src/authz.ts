@@ -618,16 +618,19 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 
 	/**
 	 * Creates or updates every built-in role so its grants match the code, and deletes the
-	 * built-in roles the code no longer has (with their assignments). Idempotent.
+	 * built-in roles the code no longer has. One still held by a member is kept (in `kept`):
+	 * deleting it would silently take that access away; reassign its holders first. Idempotent.
 	 */
 	async function syncSystemRoles(): Promise<{
 		created: string[];
 		updated: string[];
 		deleted: string[];
+		kept: string[];
 	}> {
 		const created: string[] = [];
 		const updated: string[] = [];
 		const deleted: string[] = [];
+		const kept: string[] = [];
 		for (const meta of systemRoles) {
 			const grants = validateGrants(
 				(catalog.roleGrants[meta.key] ?? []).map(([resource, action, scope]) => ({
@@ -664,11 +667,15 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		}
 		for (const stale of await store.listRoles(SYSTEM_ORG_ID)) {
 			if (!stale.isSystem || systemRoleKeys.has(stale.key)) continue;
+			if ((await store.roleAssignmentCount(stale.id)) > 0) {
+				kept.push(stale.key);
+				continue;
+			}
 			await store.deleteRole(stale.id);
 			deleted.push(stale.key);
 		}
 		if (created.length || updated.length || deleted.length) await cache.invalidateAll();
-		return { created, updated, deleted };
+		return { created, updated, deleted, kept };
 	}
 
 	return {

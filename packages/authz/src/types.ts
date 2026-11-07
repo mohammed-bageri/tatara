@@ -90,6 +90,8 @@ export interface AuthzStore {
 		input: { name?: string; description?: string | null; grants?: PermissionGrant[] },
 	): Promise<void>;
 	deleteRole(roleId: string): Promise<void>;
+	/** How many members hold the role, across every org. */
+	roleAssignmentCount(roleId: string): Promise<number>;
 	memberRoles(orgId: string, userId: string): Promise<RoleRow[]>;
 	assignRole(orgId: string, userId: string, roleId: string, by: string | null): Promise<boolean>;
 	revokeRole(orgId: string, userId: string, roleId: string): Promise<boolean>;
