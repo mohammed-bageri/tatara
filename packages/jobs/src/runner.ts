@@ -53,8 +53,14 @@ export function jobHandler(
 ): JobHandler {
 	const byTopic = buildConsumerMap(consumers);
 	return async (job) => {
-		const log = logger.child({ jobId: job.id, topic: job.topic, attempt: job.attempt });
-		const ctx = { logger: log, jobId: job.id, attempt: job.attempt, orgId: job.orgId };
+		const requestId = job.requestId ?? null;
+		const log = logger.child({
+			jobId: job.id,
+			topic: job.topic,
+			attempt: job.attempt,
+			...(requestId ? { requestId } : {}),
+		});
+		const ctx = { logger: log, jobId: job.id, attempt: job.attempt, orgId: job.orgId, requestId };
 		const consumer = byTopic.get(job.topic);
 		const dead = async (error: unknown): Promise<Outcome> => {
 			log.error({ err: error }, "job dead");

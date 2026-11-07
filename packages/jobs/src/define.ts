@@ -8,6 +8,8 @@ export interface JobEnvelope {
 	data: unknown;
 	/** the org the job acts for; null for platform work */
 	orgId: string | null;
+	/** the request that enqueued the job, for tracing; absent on jobs enqueued before it existed */
+	requestId?: string | null;
 	/** 1 for the first run */
 	attempt: number;
 	maxAttempts: number;
@@ -19,6 +21,7 @@ export interface JobContext {
 	jobId: string;
 	attempt: number;
 	orgId: string | null;
+	requestId: string | null;
 }
 
 export interface ConsumerDefinition<T extends string = string, S extends z.ZodType = z.ZodType> {
@@ -85,9 +88,16 @@ export async function processJob(
 	consumers: readonly ConsumerDefinition[],
 	topic: string,
 	data: unknown,
-	ctx: Omit<JobContext, "orgId"> & { orgId?: string | null },
+	ctx: Omit<JobContext, "orgId" | "requestId"> & {
+		orgId?: string | null;
+		requestId?: string | null;
+	},
 ): Promise<void> {
 	const consumer = consumers.find((c) => c.topic === topic);
 	if (!consumer) throw new UnknownTopicError(`No consumer for topic "${topic}"`);
-	await consumer.handle(parsePayload(consumer, data), { ...ctx, orgId: ctx.orgId ?? null });
+	await consumer.handle(parsePayload(consumer, data), {
+		...ctx,
+		orgId: ctx.orgId ?? null,
+		requestId: ctx.requestId ?? null,
+	});
 }

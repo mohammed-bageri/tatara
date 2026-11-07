@@ -40,6 +40,7 @@ async function until(check: () => boolean, ms = 15_000) {
 function consumers() {
 	const seen: { topic: string; data: unknown; orgId: string | null; attempt: number }[] = [];
 	const deadLetters: { data: unknown; error: string }[] = [];
+	const requestIds: (string | null)[] = [];
 	const flaky = { failuresLeft: 0 };
 	const list = [
 		defineConsumer({
@@ -48,6 +49,7 @@ function consumers() {
 			schema: z.object({ noteId: z.string() }),
 			async handle(data, ctx) {
 				seen.push({ topic: "notes.created", data, orgId: ctx.orgId, attempt: ctx.attempt });
+				requestIds.push(ctx.requestId);
 			},
 		}),
 		defineConsumer({
@@ -59,13 +61,14 @@ function consumers() {
 			async handle(data, ctx) {
 				if (flaky.failuresLeft-- > 0) throw new Error(`boom ${ctx.attempt}`);
 				seen.push({ topic: "notes.flaky", data, orgId: ctx.orgId, attempt: ctx.attempt });
+				requestIds.push(ctx.requestId);
 			},
 			async onDeadLetter(data, ctx) {
 				deadLetters.push({ data, error: String(ctx.error) });
 			},
 		}),
 	] as const;
-	return { list, seen, deadLetters, flaky };
+	return { list, seen, deadLetters, flaky, requestIds };
 }
 
 const closers: (() => Promise<unknown>)[] = [];
@@ -140,6 +143,15 @@ for (const [name, make] of drivers) {
 				orgId: "org-1",
 				attempt: 1,
 			});
+		});
+
+		it("carries the enqueuing request's id, through retries too", async () => {
+			const { jobs, requestIds, flaky } = await started();
+			flaky.failuresLeft = 1;
+			await jobs.enqueue("notes.created", { noteId: "n1" });
+			await jobs.enqueue("notes.flaky", { n: 1 }, { requestId: "req-1" });
+			await until(() => requestIds.length === 2);
+			expect(requestIds.sort()).toEqual([null, "req-1"].sort());
 		});
 
 		it("retries a failing job, then runs it", async () => {
