@@ -19,6 +19,27 @@ export function backoffDelay(baseMs: number, attempt: number): number {
 	return Math.min(MAX_BACKOFF_MS, baseMs * 2 ** Math.max(0, attempt - 1));
 }
 
+/**
+ * Build a Map from consumers, rejecting duplicates. Two consumers registered for the same topic
+ * is a bug: Sana's model is one event to many subscribers on top of jobs, so a duplicate
+ * consumer per topic means one is silently dropped.
+ */
+function buildConsumerMap(
+	consumers: readonly ConsumerDefinition[],
+): Map<string, ConsumerDefinition> {
+	const byTopic = new Map<string, ConsumerDefinition>();
+	for (const consumer of consumers) {
+		const existing = byTopic.get(consumer.topic);
+		if (existing) {
+			throw new Error(
+				`Duplicate consumers for topic "${consumer.topic}": "${existing.description}" and "${consumer.description}"`,
+			);
+		}
+		byTopic.set(consumer.topic, consumer);
+	}
+	return byTopic;
+}
+
 /** Where a driver takes a job from, and what it hands back to the store. */
 export type JobHandler = (job: JobEnvelope) => Promise<Outcome>;
 
@@ -30,7 +51,7 @@ export function jobHandler(
 	consumers: readonly ConsumerDefinition[],
 	logger: CoreLogger,
 ): JobHandler {
-	const byTopic = new Map(consumers.map((c) => [c.topic, c]));
+	const byTopic = buildConsumerMap(consumers);
 	return async (job) => {
 		const log = logger.child({ jobId: job.id, topic: job.topic, attempt: job.attempt });
 		const ctx = { logger: log, jobId: job.id, attempt: job.attempt, orgId: job.orgId };

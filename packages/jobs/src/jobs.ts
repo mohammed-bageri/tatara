@@ -19,6 +19,27 @@ export interface EnqueueOptions {
 const DEFAULT_ATTEMPTS = 3;
 
 /**
+ * Build a Map from consumers, rejecting duplicates. Two consumers registered for the same topic
+ * is a bug: Sana's model is one event to many subscribers on top of jobs, so a duplicate
+ * consumer per topic means one is silently dropped.
+ */
+function buildConsumerMap(
+	consumers: readonly ConsumerDefinition[],
+): Map<string, ConsumerDefinition> {
+	const byTopic = new Map<string, ConsumerDefinition>();
+	for (const consumer of consumers) {
+		const existing = byTopic.get(consumer.topic);
+		if (existing) {
+			throw new Error(
+				`Duplicate consumers for topic "${consumer.topic}": "${existing.description}" and "${consumer.description}"`,
+			);
+		}
+		byTopic.set(consumer.topic, consumer);
+	}
+	return byTopic;
+}
+
+/**
  * The app's job producer. `Topics` (topic → payload, `TopicsOf<typeof consumers>`) types it; pass
  * `consumers` too and a payload they would reject throws here instead of in the worker.
  */
@@ -27,9 +48,7 @@ export function createJobs<Topics extends object = Record<string, unknown>>(opti
 	// biome-ignore lint/suspicious/noExplicitAny: any consumer, whatever its payload type
 	consumers?: readonly ConsumerDefinition<string, any>[];
 }) {
-	const byTopic = options.consumers
-		? new Map<string, ConsumerDefinition>(options.consumers.map((c) => [c.topic, c]))
-		: undefined;
+	const byTopic = options.consumers ? buildConsumerMap(options.consumers) : undefined;
 	return {
 		driver: options.driver,
 		/** Stores a job for the consumer with this topic. Consumers validate it again when it runs. */
