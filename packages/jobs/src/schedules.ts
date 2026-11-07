@@ -3,10 +3,17 @@ import { type CoreLogger, onShutdown } from "@tatara/core";
 import { Cron } from "croner";
 import type { ScheduleContext, ScheduleDefinition } from "./define.ts";
 
-/** What schedules claim ticks with; `cache` from `@tatara/cache` is one (its `add`). */
+/** What schedules claim ticks with; `cache` from `@tatara/cache` is one (its `add` and `lock`). */
 export interface ScheduleLock {
 	/** true only for the first caller with this key until the TTL passes */
 	add(key: string, value: string, options: { ttlMs: number }): Promise<boolean>;
+	/** runs `fn` only while holding the lock; with it, a run still going skips the next tick */
+	lock?<T>(
+		key: string,
+		ttlMs: number,
+		fn: () => Promise<T>,
+		options?: { renew?: boolean },
+	): Promise<{ acquired: true; value: T } | { acquired: false }>;
 }
 
 export interface ScheduleRunOptions {
@@ -39,7 +46,9 @@ function context(log: CoreLogger, options: ScheduleRunOptions): ScheduleContext 
 /**
  * Runs one schedule for one tick. The tick is claimed, not locked: the claim outlives the run, so a
  * cron process with a skewed clock or a retried trigger for the same tick doesn't run it again.
- * Returns false when the tick was already claimed.
+ * With a lock that can hold (`lock`), the run also holds a renewed lock on the schedule, so a run
+ * that outlasts its interval makes the next tick skip instead of overlapping it on another
+ * process. Returns false when the tick was already claimed or the previous run is still going.
  */
 export async function runSchedule(
 	schedule: ScheduleDefinition,
@@ -48,14 +57,24 @@ export async function runSchedule(
 ): Promise<boolean> {
 	const log = options.logger.child({ schedule: schedule.name });
 	const key = `schedule:${schedule.name}:${tick.toISOString()}`;
-	const claimed = await options.lock.add(key, `${process.pid}`, {
-		ttlMs: schedule.lockTtlMs ?? 60 * 60 * 1000,
-	});
+	const ttlMs = schedule.lockTtlMs ?? 60 * 60 * 1000;
+	const claimed = await options.lock.add(key, `${process.pid}`, { ttlMs });
 	if (!claimed) {
 		log.debug("skipped: this tick ran elsewhere");
 		return false;
 	}
-	await schedule.run(context(log, options));
+	const run = () => schedule.run(context(log, options));
+	if (!options.lock.lock) {
+		await run();
+		return true;
+	}
+	const held = await options.lock.lock(`schedule:${schedule.name}:running`, ttlMs, run, {
+		renew: true,
+	});
+	if (!held.acquired) {
+		log.info("skipped: the previous run is still going");
+		return false;
+	}
 	return true;
 }
 

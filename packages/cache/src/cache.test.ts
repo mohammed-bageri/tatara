@@ -131,6 +131,31 @@ for (const [name, make] of drivers) {
 			});
 		});
 
+		it("keeps a renewed lock past its TTL while the work runs, then frees it", async () => {
+			const cache = fresh();
+			const slow = cache.lock("long", 60, () => wait(200), { renew: true });
+			await wait(130);
+			// past two TTLs: without renewal it would have expired
+			expect(await cache.lock("long", 60_000, async () => "early")).toEqual({ acquired: false });
+			await slow;
+			expect(await cache.lock("long", 60_000, async () => "after")).toEqual({
+				acquired: true,
+				value: "after",
+			});
+		});
+
+		it("extends a key only while it holds the given value", async () => {
+			const store = (make as () => CacheStore)();
+			const key = `ext:${randomUUID()}`;
+			await store.set(key, "mine", 60);
+			expect(await store.extendIfEquals(key, "theirs", 60_000)).toBe(false);
+			expect(await store.extendIfEquals(key, "mine", 60_000)).toBe(true);
+			await wait(120);
+			expect(await store.get(key)).toBe("mine");
+			await store.del([key]);
+			expect(await store.extendIfEquals(key, "mine", 60_000)).toBe(false);
+		});
+
 		it("never frees a lock that expired and was taken by someone else", async () => {
 			const cache = fresh();
 			const slow = cache.lock("job", 50, () => wait(150));

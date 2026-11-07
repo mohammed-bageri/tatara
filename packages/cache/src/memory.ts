@@ -49,6 +49,12 @@ export function memoryStore(): CacheStore {
 			entries.delete(key);
 			return true;
 		},
+		async extendIfEquals(key, value, ttlMs) {
+			const entry = live(key);
+			if (entry?.value !== value) return false;
+			entry.expiresAt = Date.now() + ttlMs;
+			return true;
+		},
 		async delPrefix(prefix) {
 			let count = 0;
 			for (const key of [...entries.keys()])
