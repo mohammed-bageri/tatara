@@ -1,5 +1,11 @@
 # @tatara/authz
 
+## 0.8.0
+
+### Minor Changes
+
+- 6d7fa58: `syncSystemRoles` keeps a built-in role the code no longer has while a member still holds it (reported in `kept`, and `authz:sync-permissions` warns) instead of deleting it with that member's access. Stores implement `roleAssignmentCount(roleId)` (drizzle, prisma and memory do); a custom `AuthzStore` must add it.
+
 ## 0.7.0
 
 ### Minor Changes
