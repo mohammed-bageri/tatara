@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/authz",
-	"version": "0.7.0",
+	"version": "0.8.0",
 	"description": "tatara authz: permission catalog, resolver, guards, role and member services, and routes",
 	"type": "module",
 	"license": "MIT",
