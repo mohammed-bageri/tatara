@@ -520,6 +520,12 @@ s.on("rt", (m) => { if (m.ev !== "e2e.ping") return; clearTimeout(fail); console
 			expect(published.code === 0, `realtime:publish: ${published.out.slice(-300)}`);
 			const received = await client;
 			expect(received.code === 0, `the socket got no event: ${received.out.slice(-300)}`);
+			const listed = await run(
+				"node",
+				["--env-file=.env", "dist/apps/cli/index.mjs", "realtime:channels", "--json"],
+				{ cwd: dir },
+			);
+			expect(listed.code === 0, `realtime:channels: ${listed.out.slice(-300)}`);
 			notes.push("realtime");
 		}
 

@@ -23,6 +23,7 @@ import {
 	WIRE_CLOSED_EVENT,
 	WIRE_EVENT,
 } from "./channels.ts";
+import { createMetrics, type RealtimeMeter } from "./metrics.ts";
 
 /** Where tickets live: `cache` from `@tatara/cache` is one (its add and take). */
 export interface TicketStore {
@@ -40,6 +41,20 @@ export interface RealtimeOptions {
 	path?: string;
 	/** the same check the HTTP app's CORS makes (corsOrigin from @tatara/http) */
 	allowOrigin(origin: string): boolean;
+	/**
+	 * Refuse a handshake with no Origin header (default false). Browsers always send one; mobile
+	 * apps, scripts and server-side clients don't, and their ticket still authenticates them.
+	 */
+	requireOrigin?: boolean;
+	/** default ["websocket"]; "polling" needs sticky sessions at the proxy with several processes */
+	transports?: ("websocket" | "polling")[];
+	/**
+	 * Sockets one user may hold in one org on this process (default 10, 0: no cap). Past it the new
+	 * socket gets `rt:closed { reason: "too_many_connections" }` and is closed.
+	 */
+	maxSocketsPerUser?: number;
+	/** Largest frame a client may send (default 8 KB): clients only send subscribe/unsubscribe. */
+	maxFrameBytes?: number;
 	maxSubscriptionsPerSocket?: number;
 	/**
 	 * How long a socket lives before the server closes it (default 15 min ±10%, 0: forever). The
@@ -53,7 +68,20 @@ export interface RealtimeOptions {
 	checkPermission?(who: SocketIdentity, permission: string): Promise<boolean> | boolean;
 	/** Checks a channel's `feature` against the org's plan; required when a channel declares one. */
 	featureAllowed?(orgId: string, feature: string): Promise<boolean> | boolean;
+	/** Records the counters on it too, e.g. `metrics.getMeter("app.realtime")` from @opentelemetry/api. */
+	meter?: RealtimeMeter;
 	logger: CoreLogger;
+}
+
+export interface RealtimeHealth {
+	/** "disabled" with the noop driver: off on purpose, not a readiness failure */
+	status: "healthy" | "unhealthy" | "disabled";
+	driver: "socketio" | "noop";
+	adapter?: "redis" | "memory";
+	/** sockets held by this process */
+	connections?: number;
+	detail?: { attached: boolean; closed: boolean };
+	error?: string;
 }
 
 type Emitter = {
@@ -66,7 +94,8 @@ const NOOP: Emitter = {
 	in: () => ({ disconnectSockets: () => undefined }),
 };
 
-type Target = { emitter: Emitter; flush: () => Promise<unknown> };
+/** `live` is false when the event goes nowhere (noop, closed, or detached without Redis). */
+type Target = { emitter: Emitter; flush: () => Promise<unknown>; live: boolean };
 
 /**
  * The emitter publishes and drops the promise: wrapped, a failed publish can't become an unhandled
@@ -94,27 +123,44 @@ type AnyChannel = ChannelDefinition<string, any>;
 export function createRealtime(options: RealtimeOptions) {
 	const ttlMs = options.ticketTtlMs ?? 60_000;
 	const log = options.logger;
+	const metrics = createMetrics(options.meter);
 	let io: Server | undefined;
 	let emitter: Promise<Target> | undefined;
 	let channels: readonly AnyChannel[] = [];
+	let closed = false;
+	/** every Redis connection this instance opened, so close() and health() see them all */
+	const redisClients: Redis[] = [];
+	const socketsByUser = new Map<string, Set<string>>();
+	let shutdownRegistered = false;
+	// close() is idempotent, so an app that calls it in its own shutdown order can keep this hook
+	const registerShutdown = () => {
+		if (shutdownRegistered) return;
+		shutdownRegistered = true;
+		onShutdown("realtime", close);
+	};
+	const redisClient = (factory: () => Redis) => {
+		const client = factory();
+		redisClients.push(client);
+		return client;
+	};
 
 	const done = async () => {};
+	const NOWHERE: Target = { emitter: NOOP, flush: done, live: false };
 	/** where a publish goes: the attached server, else Redis (other processes), else nowhere */
 	const target = (): Promise<Target> => {
-		if (options.driver === "noop") return Promise.resolve({ emitter: NOOP, flush: done });
-		if (io) return Promise.resolve({ emitter: io as unknown as Emitter, flush: done });
+		if (options.driver === "noop" || closed) return Promise.resolve(NOWHERE);
+		if (io) return Promise.resolve({ emitter: io as unknown as Emitter, flush: done, live: true });
 		const adapter = options.adapter;
-		if (adapter.kind !== "redis") return Promise.resolve({ emitter: NOOP, flush: done });
+		if (adapter.kind !== "redis") return Promise.resolve(NOWHERE);
 		emitter ??= import("@socket.io/redis-emitter").then(({ Emitter }) => {
-			const client = adapter.redis();
-			onShutdown("realtime-emitter", async () => {
-				await client.quit().catch(() => client.disconnect());
-			});
+			const client = redisClient(adapter.redis);
+			registerShutdown();
 			// the emitter publishes without waiting; a PING on the same connection answers only after
 			// what came before it went out, so a process may exit once a publish resolves
 			return {
 				emitter: new Emitter(quietPublish(client)) as unknown as Emitter,
 				flush: () => client.ping(),
+				live: true,
 			};
 		});
 		return emitter;
@@ -129,36 +175,45 @@ export function createRealtime(options: RealtimeOptions) {
 		return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 	};
 	// never throws: a realtime failure must not fail the work that published
-	const send = async (fn: (emitter: Emitter) => unknown, context: Record<string, unknown>) => {
-		let flush: Target["flush"];
+	const send = async (
+		fn: (emitter: Emitter) => unknown,
+		context: Record<string, unknown>,
+	): Promise<"sent" | "failed" | "nowhere"> => {
+		let t: Target;
 		try {
-			const t = await target();
+			t = await target();
+			if (!t.live) return "nowhere";
 			fn(t.emitter);
-			flush = t.flush;
 		} catch (err) {
 			log.error({ err, ...context }, "realtime publish failed");
-			return;
+			return "failed";
 		}
 		try {
-			await withTimeout(flush(), publishTimeoutMs);
+			await withTimeout(t.flush(), publishTimeoutMs);
 		} catch (err) {
 			log.warn({ err, ...context }, "realtime publish flush failed");
+			return "failed";
 		}
+		return "sent";
 	};
-	const publish = (orgId: string, room: string, ch: string, ev: string, data: unknown) =>
-		send((e) => e.to(room).emit(WIRE_EVENT, createEnvelope(ch, ev, data)), {
+	const publish = async (orgId: string, room: string, ch: string, ev: string, data: unknown) => {
+		const sent = await send((e) => e.to(room).emit(WIRE_EVENT, createEnvelope(ch, ev, data)), {
 			orgId,
 			channel: ch,
 			event: ev,
 		});
-	const disconnect = (orgId: string, room: string, reason: DisconnectReason) =>
-		send(
+		if (sent !== "nowhere") metrics.published(sent === "sent");
+	};
+	const disconnect = async (orgId: string, room: string, reason: DisconnectReason) => {
+		const sent = await send(
 			(e) => {
 				e.to(room).emit(WIRE_CLOSED_EVENT, { reason });
 				e.in(room).disconnectSockets(true);
 			},
 			{ orgId, reason },
 		);
+		if (sent === "sent") metrics.disconnected(reason);
+	};
 
 	async function issueTicket(
 		who: SocketIdentity,
@@ -222,13 +277,16 @@ export function createRealtime(options: RealtimeOptions) {
 		return { ok: true, room: channelRoom(who.orgId, definition.name, name) };
 	}
 
-	const allowed = (origin: string | undefined) => !origin || options.allowOrigin(origin);
+	const allowed = (origin: string | undefined) =>
+		origin ? options.allowOrigin(origin) : !options.requireOrigin;
 
 	async function attach(
 		server: HttpServer,
 		opts: { channels?: readonly AnyChannel[] } = {},
 	): Promise<void> {
 		if (options.driver === "noop") return;
+		if (io) throw new Error("realtime is already attached");
+		if (closed) throw new Error("realtime is closed");
 		const list = opts.channels ?? [];
 		validateChannels(list);
 		for (const channel of list) {
@@ -240,41 +298,81 @@ export function createRealtime(options: RealtimeOptions) {
 		channels = list;
 		// everything that can fail or wait happens before the server listens for sockets: no socket
 		// ever connects past the ticket check
-		const adapter =
-			options.adapter.kind === "redis"
-				? await (async (redis) => {
-						const { createAdapter } = await import("@socket.io/redis-adapter");
-						const pub = redis();
-						const sub = pub.duplicate();
-						onShutdown("realtime-redis", async () => {
-							await Promise.all([pub.quit(), sub.quit()]).catch(() => {});
-						});
-						return createAdapter(pub, sub);
-					})(options.adapter.redis)
-				: undefined;
+		const adapter = await (options.adapter.kind === "redis"
+			? (async (redis) => {
+					const { createAdapter } = await import("@socket.io/redis-adapter");
+					const pub = redisClient(redis);
+					const sub = redisClient(() => pub.duplicate());
+					return createAdapter(pub, sub);
+				})(options.adapter.redis)
+			: undefined);
+		// after an await on purpose: @tatara/http registers its server's hook right after onServer
+		// returns, and hooks run last-registered first, so the sockets close before the server waits
+		// on them
+		registerShutdown();
+		const path = options.path ?? "/realtime";
 		const server_ = new Server(server, {
-			path: options.path ?? "/realtime",
-			transports: ["websocket"],
+			path,
+			transports: options.transports ?? ["websocket"],
+			serveClient: false,
+			perMessageDeflate: false,
+			maxHttpBufferSize: options.maxFrameBytes ?? 8 * 1024,
 			// browsers send Origin on the upgrade; CORS headers alone wouldn't stop it
-			allowRequest: (req, cb) => cb(null, allowed(req.headers.origin)),
+			allowRequest: (req, cb) => {
+				if (closed) return cb(null, false);
+				const ok = allowed(req.headers.origin);
+				if (!ok) metrics.rejected("origin");
+				cb(null, ok);
+			},
 			cors: { origin: (origin, cb) => cb(null, allowed(origin)), credentials: true },
 			...(adapter ? { adapter } : {}),
 		});
 		server_.use(async (socket, next) => {
-			const who = await redeem((socket.handshake.auth as { ticket?: unknown } | undefined)?.ticket);
-			if (!who) return next(new Error("unauthorized"));
+			const ticket = (socket.handshake.auth as { ticket?: unknown } | undefined)?.ticket;
+			if (typeof ticket !== "string" || ticket.length === 0) {
+				metrics.rejected("no_ticket");
+				return next(new Error("unauthorized"));
+			}
+			const who = await redeem(ticket);
+			if (!who) {
+				metrics.rejected("bad_ticket");
+				return next(new Error("unauthorized"));
+			}
 			socket.data.who = who;
 			next();
 		});
 		const maxSubscriptions = options.maxSubscriptionsPerSocket ?? 50;
 		const lifetimeMs = options.maxSocketLifetimeMs ?? 15 * 60 * 1000;
+		const maxSockets = options.maxSocketsPerUser ?? 10;
 		server_.on("connection", (socket) => {
 			const who = socket.data.who as SocketIdentity;
+			const key = userRoom(who);
+			const open = socketsByUser.get(key) ?? new Set<string>();
+			if (maxSockets > 0 && open.size >= maxSockets) {
+				// per process: across n processes a user can hold n × the cap, still bounded
+				log.warn(
+					{ userId: who.userId, orgId: who.orgId, open: open.size },
+					"realtime per-user socket cap reached, closing the new socket",
+				);
+				metrics.rejected("too_many_connections");
+				socket.emit(WIRE_CLOSED_EVENT, { reason: "too_many_connections" });
+				socket.disconnect(true);
+				return;
+			}
+			open.add(socket.id);
+			socketsByUser.set(key, open);
+			metrics.opened();
+			socket.on("disconnect", () => {
+				metrics.closed();
+				open.delete(socket.id);
+				if (open.size === 0 && socketsByUser.get(key) === open) socketsByUser.delete(key);
+			});
 			void socket.join([userRoom(who), orgRoom(who.orgId)]);
 			if (lifetimeMs > 0) {
 				// jittered so the sockets opened during a deploy don't all reconnect in one burst
 				const jittered = lifetimeMs * (1 + 0.1 * (Math.random() * 2 - 1));
 				const expire = setTimeout(() => {
+					metrics.disconnected("session_invalid");
 					socket.emit(WIRE_CLOSED_EVENT, { reason: "session_invalid" });
 					socket.disconnect(true);
 				}, jittered);
@@ -284,7 +382,10 @@ export function createRealtime(options: RealtimeOptions) {
 			// subscriptions being authorized count toward the cap, so a burst can't pass it
 			let pending = 0;
 			socket.on("subscribe", async (channel: unknown, ack?: (r: SubscribeAck) => void) => {
-				const reply = typeof ack === "function" ? ack : () => {};
+				const reply = (r: SubscribeAck) => {
+					metrics.subscribed(r.ok ? "allowed" : (r.code ?? "FORBIDDEN"));
+					if (typeof ack === "function") ack(r);
+				};
 				const name = typeof channel === "string" ? channel : "";
 				if (!name) return reply({ ok: false, channel: "", code: "CHANNEL_INVALID" });
 				if (joined.has(name)) return reply({ ok: true, channel: name });
@@ -317,13 +418,55 @@ export function createRealtime(options: RealtimeOptions) {
 			});
 		});
 		io = server_;
-		onShutdown("realtime", () => new Promise<void>((resolve) => server_.close(() => resolve())));
-		log.info({ path: options.path ?? "/realtime" }, "realtime attached");
+		log.info({ path }, "realtime attached");
+	}
+
+	/**
+	 * Closes this process's sockets and Redis connections, leaving the HTTP server it was attached
+	 * to running (the app closes that, after). Idempotent; publishes after it are dropped.
+	 */
+	async function close(): Promise<void> {
+		if (closed) return;
+		closed = true;
+		if (io) {
+			// not io.close(): that closes the HTTP server too, which the app owns
+			io.local.disconnectSockets(true);
+			io.engine.close();
+			io = undefined;
+		}
+		socketsByUser.clear();
+		await Promise.all(
+			redisClients.splice(0).map((client) =>
+				client.quit().then(
+					() => {},
+					() => client.disconnect(),
+				),
+			),
+		);
+	}
+
+	async function health(): Promise<RealtimeHealth> {
+		if (options.driver === "noop") return { status: "disabled", driver: "noop" };
+		const base = {
+			driver: "socketio" as const,
+			adapter: options.adapter.kind,
+			connections: metrics.snapshot().connectionsOpen,
+			detail: { attached: io !== undefined, closed },
+		};
+		if (closed) return { ...base, status: "unhealthy", error: "realtime is closed" };
+		// a process that never attached publishes through Redis once it has, and is healthy before
+		if (redisClients.some((client) => client.status !== "ready"))
+			return { ...base, status: "unhealthy", error: "redis connection is not ready" };
+		return { ...base, status: "healthy" };
 	}
 
 	return {
 		issueTicket,
 		attach,
+		close,
+		health,
+		/** this process's counts since it started, e.g. for a readiness probe */
+		metrics: metrics.snapshot,
 		/** every socket the user has open in the org; arrives on channel "user:<userId>" */
 		async publishToUser(orgId: string, userId: string, event: string, payload: unknown) {
 			await publish(orgId, userRoom({ orgId, userId }), userChannel(userId), event, payload);
@@ -358,6 +501,7 @@ export function createRealtime(options: RealtimeOptions) {
 				if (!schema) throw new Error(`no event "${input.event}"`);
 				const parsed = schema.safeParse(input.payload);
 				if (!parsed.success) {
+					if (options.driver !== "noop") metrics.published(false);
 					log.error(
 						{ ...context, issues: parsed.error.issues },
 						"realtime payload does not match the channel's schema, event dropped",
@@ -367,6 +511,7 @@ export function createRealtime(options: RealtimeOptions) {
 				payload = parsed.data;
 				name = channelName(channel.name, (input.params ?? {}) as Record<string, string>);
 			} catch (err) {
+				if (options.driver !== "noop") metrics.published(false);
 				log.error({ err, ...context }, "realtime publish rejected, event dropped");
 				return;
 			}
