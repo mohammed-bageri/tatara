@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/realtime",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "tatara realtime: socket.io with ticket auth, user and org rooms, module channels and cross-process publishing",
 	"type": "module",
 	"license": "MIT",
