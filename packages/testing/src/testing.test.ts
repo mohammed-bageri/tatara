@@ -246,6 +246,19 @@ describe.skipIf(!DATABASE_URL)("Postgres", () => {
 		await cleanDatabase(url);
 		expect(await query(url, "select count(*)::int as n from lookup")).toEqual([{ n: 0 }]);
 	});
+
+	it("cleanDatabase with roots cleans them and what references them, and keeps the rest", async () => {
+		const url = `${baseUrl}_w2`;
+		await query(
+			url,
+			"insert into parent (name) values ('p'); insert into child (parent_id) values (1)",
+		);
+		await cleanDatabase(url, { roots: ["parent"] });
+		expect(await query(url, "select count(*)::int as n from parent")).toEqual([{ n: 0 }]);
+		expect(await query(url, "select count(*)::int as n from child")).toEqual([{ n: 0 }]);
+		// seeded, and neither a root nor referencing one
+		expect(await query(url, "select count(*)::int as n from lookup")).toEqual([{ n: 2 }]);
+	});
 });
 
 describe.skipIf(!REDIS_URL)("Redis", () => {

@@ -14,6 +14,12 @@ export interface CleanDatabaseOptions {
 	schemas?: string[];
 	/** Tables to keep, as `name` or `schema.name`. Migration tables are always kept. */
 	exclude?: string[];
+	/**
+	 * Clean only these tables and every table that references them, transitively (what a
+	 * `TRUNCATE … CASCADE` of them would reach). Without it, every table is cleaned. Seed data in
+	 * tables outside that reach survives.
+	 */
+	roots?: string[];
 }
 
 interface Target {
@@ -40,8 +46,25 @@ const TARGETS_SQL = `
 		and n.nspname = any($1::text[])
 		and c.relname <> all($2::text[])
 		and (n.nspname || '.' || c.relname) <> all($2::text[])
+		and ($3::text[] is null or c.oid in (select oid from reach))
 	group by n.nspname, c.relname
 	order by 1`;
+
+/** The roots (by `name` or `schema.name`) and every table referencing them, transitively. */
+const TARGETS_SQL_ALL = TARGETS_SQL.replace(
+	"\n\t\tand ($3::text[] is null or c.oid in (select oid from reach))",
+	"",
+);
+
+const REACH_SQL = `
+	with recursive reach(oid) as (
+		select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
+		where n.nspname = any($1::text[]) and c.relkind in ('r', 'p')
+			and (c.relname = any($3::text[]) or (n.nspname || '.' || c.relname) = any($3::text[]))
+		union
+		select con.conrelid from pg_constraint con join reach r on con.confrelid = r.oid
+		where con.contype = 'f'
+	)`;
 
 function pgCode(err: unknown): string | undefined {
 	if (!err || typeof err !== "object") return undefined;
@@ -92,13 +115,18 @@ export async function cleanDatabase(
 ): Promise<void> {
 	const schemas = options.schemas ?? ["public"];
 	const exclude = [...MIGRATION_TABLES, ...(options.exclude ?? [])];
-	const key = JSON.stringify([schemas, exclude]);
+	const roots = options.roots ?? null;
+	const key = JSON.stringify([schemas, exclude, roots]);
 	const byOptions = targetsCache.get(target) ?? new Map<string, Promise<Target[]>>();
 	targetsCache.set(target, byOptions);
 	let targets = byOptions.get(key);
 	if (!targets) {
 		targets = withConnection(target, async (c) => {
-			const { rows } = await c.query(TARGETS_SQL, [schemas, exclude]);
+			const { rows } = await c.query(roots ? REACH_SQL + TARGETS_SQL : TARGETS_SQL_ALL, [
+				schemas,
+				exclude,
+				...(roots ? [roots] : []),
+			]);
 			return (rows as { qualified: string; sequences: string[] | null }[]).map((r) => ({
 				qualified: r.qualified,
 				sequences: r.sequences ?? [],
