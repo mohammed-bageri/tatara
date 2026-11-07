@@ -1,7 +1,7 @@
 {
 	"name": "@tatara/testing",
 	"version": "0.1.1",
-	"description": "tatara test helpers: in-process API client and one database per test worker",
+	"description": "tatara test helpers: in-process API client, per-worker databases and Redis dbs, fast cleanup",
 	"type": "module",
 	"license": "MIT",
 	"sideEffects": false,
@@ -23,6 +23,25 @@
 		"build": "tsdown",
 		"typecheck": "tsc --noEmit"
 	},
+	"peerDependencies": {
+		"ioredis": "^6.0.0",
+		"pg": "^8.23.1"
+	},
+	"peerDependenciesMeta": {
+		"ioredis": {
+			"optional": true
+		},
+		"pg": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@tatara/http": "workspace:^",
+		"@types/pg": "8.23.1",
+		"hono": "^4.13.13",
+		"ioredis": "^6.0.0",
+		"pg": "^8.23.1"
+	},
 	"publishConfig": {
 		"access": "public"
 	},
@@ -34,8 +53,5 @@
 	"homepage": "https://github.com/mohammed-bageri/tatara-cli#readme",
 	"bugs": {
 		"url": "https://github.com/mohammed-bageri/tatara-cli/issues"
-	},
-	"devDependencies": {
-		"hono": "^4.13.13"
 	}
 }
