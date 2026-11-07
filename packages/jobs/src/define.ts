@@ -59,6 +59,8 @@ export interface ScheduleContext {
 
 export interface ScheduleDefinition {
 	name: string;
+	/** what it does, for listings */
+	description?: string;
 	/** cron expression (seconds optional), evaluated in UTC */
 	cron: string;
 	/** how long a tick stays claimed (default an hour): one run per tick across processes and triggers */
