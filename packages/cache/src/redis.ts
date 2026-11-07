@@ -5,6 +5,7 @@ const INCREMENT = `local v = redis.call("incrby", KEYS[1], ARGV[1])
 if tonumber(ARGV[2]) > 0 and redis.call("pttl", KEYS[1]) == -1 then redis.call("pexpire", KEYS[1], ARGV[2]) end
 return v`;
 const DEL_IF_EQUALS = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
+const EXTEND_IF_EQUALS = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end`;
 
 type RedisClient = Pick<Redis, "get" | "set" | "getdel" | "del" | "unlink" | "eval" | "scanStream">;
 
@@ -33,6 +34,9 @@ export function redisStore(redis: RedisClient | (() => RedisClient)): CacheStore
 		},
 		async delIfEquals(key, value) {
 			return (await client().eval(DEL_IF_EQUALS, 1, key, value)) === 1;
+		},
+		async extendIfEquals(key, value, ttlMs) {
+			return (await client().eval(EXTEND_IF_EQUALS, 1, key, value, ttlMs)) === 1;
 		},
 		async delPrefix(prefix) {
 			const stream = client().scanStream({ match: `${escapeGlob(prefix)}*`, count: 500 });

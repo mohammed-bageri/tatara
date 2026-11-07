@@ -17,8 +17,17 @@ export interface Cache {
 	increment(key: string, options?: { by?: number; ttlMs?: number }): Promise<number>;
 	/** the cached value, else `fn()` cached for `ttlMs`; a failing store falls back to `fn()` */
 	wrap<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T>;
-	/** runs `fn` only while holding the lock, released after; another holder means not acquired */
-	lock<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<LockResult<T>>;
+	/**
+	 * runs `fn` only while holding the lock, released after; another holder means not acquired.
+	 * With `renew`, the lock is extended every `ttlMs / 2` while `fn` runs, so work longer than
+	 * `ttlMs` keeps it; a crashed holder's lock still expires after `ttlMs`.
+	 */
+	lock<T>(
+		key: string,
+		ttlMs: number,
+		fn: () => Promise<T>,
+		options?: { renew?: boolean },
+	): Promise<LockResult<T>>;
 }
 
 export interface CacheOptions {
@@ -89,13 +98,29 @@ export function createCache(store: CacheStore, options: CacheOptions = {}): Cach
 			}
 			return value;
 		},
-		async lock(key, ttlMs, fn) {
+		async lock(key, ttlMs, fn, lockOptions) {
 			const lockKey = k(`lock:${key}`);
 			const token = randomUUID();
 			if (!(await store.add(lockKey, token, assertTtl(ttlMs)))) return { acquired: false };
+			const renewal = lockOptions?.renew
+				? setInterval(
+						() => {
+							store.extendIfEquals(lockKey, token, ttlMs).then(
+								(held) => {
+									// lost (expired and taken): stop renewing someone else's lock
+									if (!held) clearInterval(renewal);
+								},
+								(error: unknown) => options.onError?.(error, key),
+							);
+						},
+						Math.max(1, Math.floor(ttlMs / 2)),
+					)
+				: undefined;
+			renewal?.unref?.();
 			try {
 				return { acquired: true, value: await fn() };
 			} finally {
+				if (renewal) clearInterval(renewal);
 				// only our own lock: if it expired and someone else took it, theirs stays
 				await store.delIfEquals(lockKey, token);
 			}

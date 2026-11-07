@@ -83,6 +83,13 @@ export function postgresStore(db: Queryable): CacheStore {
 			);
 			return rowCount === 1;
 		},
+		async extendIfEquals(key, value, ttlMs) {
+			const { rowCount } = await query(
+				`update ${TABLE} set expires_at = ${EXPIRES} where key = $1 and value = $2 and ${LIVE}`,
+				[key, value, ttlMs],
+			);
+			return rowCount === 1;
+		},
 		async delPrefix(prefix) {
 			const pattern = `${prefix.replace(/[\\%_]/g, "\\$&")}%`;
 			const { rowCount } = await query(

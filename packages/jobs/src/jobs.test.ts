@@ -452,6 +452,45 @@ describe("schedules", () => {
 		expect(run).toHaveBeenCalledTimes(1);
 	});
 
+	it("skips a tick while the previous run still holds the schedule, then runs again", async () => {
+		const held = new Set<string>();
+		const renewals: unknown[] = [];
+		const lock: ScheduleLock = {
+			...claimStore(),
+			async lock(key, _ttlMs, fn, options) {
+				renewals.push(options);
+				if (held.has(key)) return { acquired: false };
+				held.add(key);
+				try {
+					return { acquired: true, value: await fn() };
+				} finally {
+					held.delete(key);
+				}
+			},
+		};
+		let release: () => void = () => {};
+		const run = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		const schedule = defineSchedule({ name: "slow", cron: "* * * * *", run });
+		const first = runSchedule(schedule, new Date("2026-11-01T00:01:00Z"), { lock, logger });
+		// the next minute's tick, on another process, while the first run is still going
+		expect(await runSchedule(schedule, new Date("2026-11-01T00:02:00Z"), { lock, logger })).toBe(
+			false,
+		);
+		release();
+		expect(await first).toBe(true);
+		run.mockImplementation(async () => {});
+		expect(await runSchedule(schedule, new Date("2026-11-01T00:03:00Z"), { lock, logger })).toBe(
+			true,
+		);
+		expect(run).toHaveBeenCalledTimes(2);
+		expect(renewals.every((o) => (o as { renew?: boolean })?.renew === true)).toBe(true);
+	});
+
 	it("visits every org, and one failing doesn't stop the rest", async () => {
 		const visited: string[] = [];
 		let result: unknown;

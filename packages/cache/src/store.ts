@@ -12,6 +12,8 @@ export interface CacheStore {
 	del(keys: string[]): Promise<void>;
 	/** deletes the key only while it still holds `value` */
 	delIfEquals(key: string, value: string): Promise<boolean>;
+	/** resets the key's expiry to `ttlMs` only while it still holds `value` (a lock renewing itself) */
+	extendIfEquals(key: string, value: string, ttlMs: number): Promise<boolean>;
 	/** every key starting with `prefix`; returns how many went */
 	delPrefix(prefix: string): Promise<number>;
 	/** adds `by` (a missing key counts as 0); `ttlMs` applies only when the key has no expiry yet */
