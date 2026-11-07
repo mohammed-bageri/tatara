@@ -1,5 +1,11 @@
 # @tatara/jobs
 
+## 0.3.1
+
+### Patch Changes
+
+- c0671ca: Reject duplicate consumers per topic and executor with non-Postgres drivers
+
 ## 0.3.0
 
 ### Minor Changes
