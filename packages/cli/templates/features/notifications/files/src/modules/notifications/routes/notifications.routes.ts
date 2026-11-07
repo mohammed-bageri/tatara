@@ -11,9 +11,11 @@ import {
 	success,
 	successSchema,
 } from "@tatara/http";
+import { localizeNotification } from "@tatara/notifications";
 import type { Context } from "hono";
 import { createRouter, defineRoutes } from "#core/http/routes";
 import { notificationStore as store } from "#modules/notifications/services/store";
+import { readerLanguage, translate } from "#modules/notifications/services/translate";
 // tatara:slot imports
 
 const guard = [
@@ -66,14 +68,23 @@ router.openapi(
 			...(before ? { before: { createdAt: new Date(before.createdAt), id: before.id } } : {}),
 		});
 		const page = cursorPage(rows, limit, (r) => ({ createdAt: r.createdAt.toISOString(), id: r.id }));
+		// keys are translated now, in the reader's language, not the one it was sent in
+		const language = readerLanguage(c);
 		return c.json(
 			{
 				...page,
-				data: page.data.map((r) => ({
-					...r,
-					readAt: r.readAt?.toISOString() ?? null,
-					createdAt: r.createdAt.toISOString(),
-				})),
+				data: page.data.map((row) => {
+					const r = localizeNotification(row, language, translate);
+					return {
+						id: r.id,
+						name: r.name,
+						title: r.title,
+						body: r.body,
+						url: r.url,
+						readAt: r.readAt?.toISOString() ?? null,
+						createdAt: r.createdAt.toISOString(),
+					};
+				}),
 			},
 			200,
 		);

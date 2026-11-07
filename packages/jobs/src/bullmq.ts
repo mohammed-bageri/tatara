@@ -39,7 +39,12 @@ export function bullmqDriver(options: BullmqDriverOptions): JobDriver {
 
 	return {
 		name: "bullmq",
-		async send(jobs) {
+		async send(jobs, executor) {
+			if (executor !== undefined) {
+				throw new Error(
+					"BullMQ driver can't enqueue inside a transaction; use the Postgres driver or enqueue after commit",
+				);
+			}
 			await add(options.name, jobs);
 		},
 		async consume(handle, { concurrency, logger }) {

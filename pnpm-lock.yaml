@@ -58,6 +58,10 @@ importers:
         version: 4.6.7
 
   packages/authz:
+    dependencies:
+      '@tatara/cache':
+        specifier: workspace:*
+        version: link:../cache
     devDependencies:
       '@hono/node-server':
         specifier: ^2.1.5

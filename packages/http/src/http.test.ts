@@ -201,4 +201,21 @@ describe("routes and OpenAPI", () => {
 		expect(Object.keys(doc.paths)).toContain("/api/notes");
 		expect((await a.request("/docs")).status).toBe(200);
 	});
+
+	it("caches the OpenAPI document after first request, not rebuilding on every hit", async () => {
+		const a = app();
+		mountRoutes(a, routes, { app: "api", prefix: "/api" });
+		let buildCount = 0;
+		const originalGet = a.getOpenAPI31Document.bind(a);
+		a.getOpenAPI31Document = (...args: Parameters<typeof originalGet>) => {
+			buildCount++;
+			return originalGet(...args);
+		};
+		serveOpenApi(a, { title: "Test API" });
+		handleErrors(a);
+		const first = await (await a.request("/openapi.json")).json();
+		const second = await (await a.request("/openapi.json")).json();
+		expect(buildCount).toBe(1);
+		expect(first).toEqual(second);
+	});
 });

@@ -69,7 +69,12 @@ export function kafkaDriver(options: KafkaDriverOptions): JobDriver {
 
 	return {
 		name: "kafka",
-		async send(jobs) {
+		async send(jobs, executor) {
+			if (executor !== undefined) {
+				throw new Error(
+					"Kafka driver can't enqueue inside a transaction; use the Postgres driver or enqueue after commit",
+				);
+			}
 			const now = jobs.filter((j) => j.delayMs <= 0);
 			const later = jobs.filter((j) => j.delayMs > 0);
 			if (now.length) await produce(options.topic, now);

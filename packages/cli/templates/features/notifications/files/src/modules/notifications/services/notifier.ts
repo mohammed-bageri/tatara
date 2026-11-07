@@ -13,6 +13,7 @@ import { enqueue } from "#core/jobs/index";
 import { logger } from "#core/logging/logger";
 import { notifications } from "#generated/notifications";
 import { notificationStore } from "#modules/notifications/services/store";
+import { translate } from "#modules/notifications/services/translate";
 import { auth } from "#modules/users/services/auth";
 // tatara:slot imports
 
@@ -55,6 +56,10 @@ export const { notify, consumers } = createNotifier<NotificationsOf<typeof notif
 	// who gets what is yours to decide: preferences, quiet hours… ({ userId, notification, channel,
 	// data }); false skips that channel for that user
 	allow: () => true,
+	// a channel is at most once unless listed here: "at-least-once" resends after a crash, with the
+	// same idempotency key (passed to each sender), e.g. { email: "at-least-once" }
+	delivery: {},
+	translate,
 	sms: sms(),
 	push: push(),
 	// tatara:slot senders

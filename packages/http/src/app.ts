@@ -130,7 +130,7 @@ export function mountRoutes<E extends HttpEnv>(
 
 type OpenApiDocument = ReturnType<OpenAPIHono["getOpenAPI31Document"]>;
 
-/** `/openapi.json` (built per request so `extend` can add to it) and the Scalar UI at `/docs`. */
+/** `/openapi.json` (built once on first request, cached after) and the Scalar UI at `/docs`. */
 export function serveOpenApi<E extends HttpEnv>(
 	app: OpenAPIHono<E>,
 	options: {
@@ -143,10 +143,19 @@ export function serveOpenApi<E extends HttpEnv>(
 		openapi: "3.1.0",
 		info: { title: options.title, version: options.version ?? "1.0.0" },
 	} as const;
-	app.get("/openapi.json", async (c) => {
+	// One build (and one stringify) for the life of the app; concurrent first requests share it.
+	let cached: Promise<string> | undefined;
+	const build = async () => {
 		const document = app.getOpenAPI31Document(config);
 		await options.extend?.(document);
-		return c.json(document);
+		return JSON.stringify(document);
+	};
+	app.get("/openapi.json", async (c) => {
+		cached ??= build().catch((error) => {
+			cached = undefined;
+			throw error;
+		});
+		return c.body(await cached, 200, { "Content-Type": "application/json" });
 	});
 	app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: options.title }));
 }

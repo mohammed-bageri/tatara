@@ -66,7 +66,15 @@ function consumerList(files: string[]): string {
 	return `${HEADER}import type { ConsumerDefinition } from "@tatara/jobs";
 ${imports.join("\n")}${imports.length ? "\n" : ""}
 // biome-ignore lint/suspicious/noExplicitAny: every consumer, whatever its payload
-export const consumers = [${names.join(", ")}] as const satisfies readonly ConsumerDefinition<string, any>[];
+const list = [${names.join(", ")}] as const satisfies readonly ConsumerDefinition<string, any>[];
+// validate at module load: two consumers per topic is a registration bug, not a feature
+const seen = new Map<string, string>();
+for (const c of list) {
+	const existing = seen.get(c.topic);
+	if (existing) throw new Error(\`Duplicate consumers for topic "\${c.topic}": "\${existing}" and "\${c.description}"\`);
+	seen.set(c.topic, c.description);
+}
+export const consumers = list;
 `;
 }
 

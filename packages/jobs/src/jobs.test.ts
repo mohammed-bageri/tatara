@@ -258,6 +258,45 @@ describe.skipIf(!DATABASE_URL)("the postgres driver under a slow job", { timeout
 	});
 });
 
+describe.skipIf(!KAFKA_BROKERS)("the kafka driver with executor", () => {
+	it("rejects enqueue with executor parameter", async () => {
+		const c = consumers();
+		const driver = kafkaDriver({
+			kafka: new Kafka({
+				brokers: (KAFKA_BROKERS as string).split(","),
+				logLevel: logLevel.NOTHING,
+			}),
+			topic: `t-${randomUUID()}`,
+			groupId: `g-${randomUUID()}`,
+		});
+		const jobs = createJobs({ driver, consumers: c.list });
+		await expect(
+			jobs.enqueue("notes.created", { noteId: "n1" }, { executor: { fake: "transaction" } }),
+		).rejects.toThrow(
+			/Kafka driver can't enqueue inside a transaction; use the Postgres driver or enqueue after commit/,
+		);
+	});
+});
+
+describe.skipIf(!REDIS_URL)("the bullmq driver with executor", () => {
+	it("rejects enqueue with executor parameter", async () => {
+		const c = consumers();
+		const redis = new Redis(REDIS_URL as string, { maxRetriesPerRequest: null });
+		closers.push(() => redis.quit());
+		const driver = bullmqDriver({
+			name: `t-${randomUUID()}`,
+			prefix: "tatara-test",
+			redis: () => redis,
+		});
+		const jobs = createJobs({ driver, consumers: c.list });
+		await expect(
+			jobs.enqueue("notes.created", { noteId: "n1" }, { executor: { fake: "transaction" } }),
+		).rejects.toThrow(
+			/BullMQ driver can't enqueue inside a transaction; use the Postgres driver or enqueue after commit/,
+		);
+	});
+});
+
 describe("jobHandler", () => {
 	it("gives up on a job whose deliveries ran past its attempts (a worker died on each)", async () => {
 		const c = consumers();
@@ -332,6 +371,48 @@ describe("createJobs", () => {
 		await expect(
 			processJob(c.list, "notes.created", {}, { logger, jobId: "t", attempt: 1 }),
 		).rejects.toThrow(/Invalid payload/);
+	});
+
+	it("rejects duplicate consumers for the same topic in createJobs", () => {
+		const duplicate = [
+			defineConsumer({
+				topic: "same.topic",
+				description: "first consumer",
+				schema: z.object({}),
+				async handle() {},
+			}),
+			defineConsumer({
+				topic: "same.topic",
+				description: "second consumer",
+				schema: z.object({}),
+				async handle() {},
+			}),
+		];
+		expect(() =>
+			createJobs({ driver: inlineDriver({ consumers: duplicate, logger }), consumers: duplicate }),
+		).toThrow(
+			/Duplicate consumers for topic "same\.topic": "first consumer" and "second consumer"/,
+		);
+	});
+
+	it("rejects duplicate consumers for the same topic in jobHandler", () => {
+		const duplicate = [
+			defineConsumer({
+				topic: "same.topic",
+				description: "first consumer",
+				schema: z.object({}),
+				async handle() {},
+			}),
+			defineConsumer({
+				topic: "same.topic",
+				description: "second consumer",
+				schema: z.object({}),
+				async handle() {},
+			}),
+		];
+		expect(() => jobHandler(duplicate, logger)).toThrow(
+			/Duplicate consumers for topic "same\.topic": "first consumer" and "second consumer"/,
+		);
 	});
 });
 
