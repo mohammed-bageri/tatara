@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/notifications",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "tatara notifications: one notify for in-app, email, SMS and push, delivered through jobs",
 	"type": "module",
 	"license": "MIT",
