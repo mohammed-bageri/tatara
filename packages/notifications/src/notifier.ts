@@ -73,7 +73,7 @@ export interface NotifierOptions {
 	};
 	/** where to reach a user, and in which language */
 	contact(userId: string): Promise<Contact | null>;
-	email?: { send(message: { to: string } & EmailContent, options?: SendOptions): Promise<void> };
+	email?: { send(message: { to: string } & EmailContent, options?: SendOptions): Promise<unknown> };
 	sms?: SmsSender;
 	push?: PushSender;
 	/**

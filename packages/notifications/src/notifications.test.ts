@@ -377,6 +377,22 @@ describe("senders", () => {
 		});
 		// the access token is reused while it's valid
 		expect(calls.filter((u) => u.includes("oauth2"))).toHaveLength(1);
+		await push.send(["ok-2"], {
+			title: "Hi",
+			body: "There",
+			imageUrl: "https://img/x.png",
+			link: "https://app/x",
+			data: { id: "1" },
+		});
+		const last = fetch.mock.calls.at(-1) as unknown as [string, RequestInit];
+		expect(JSON.parse(String(last[1].body))).toEqual({
+			message: {
+				token: "ok-2",
+				notification: { title: "Hi", body: "There", image: "https://img/x.png" },
+				data: { id: "1" },
+				webpush: { fcm_options: { link: "https://app/x" } },
+			},
+		});
 	});
 });
 

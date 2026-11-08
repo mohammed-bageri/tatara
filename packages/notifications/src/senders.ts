@@ -118,8 +118,13 @@ export function fcmPush(options: {
 								body: JSON.stringify({
 									message: {
 										token: device,
-										notification: { title: content.title, body: content.body },
+										notification: {
+											title: content.title,
+											body: content.body,
+											...(content.imageUrl ? { image: content.imageUrl } : {}),
+										},
 										...(content.data ? { data: content.data } : {}),
+										...(content.link ? { webpush: { fcm_options: { link: content.link } } } : {}),
 									},
 								}),
 							},

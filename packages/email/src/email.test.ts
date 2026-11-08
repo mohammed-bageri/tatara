@@ -38,6 +38,40 @@ describe("createMailer", () => {
 	});
 });
 
+describe("the smtp driver's extras", () => {
+	it("passes headers, cc and attachments to nodemailer and drops Mailgun-only fields", async () => {
+		sendMail.mockResolvedValueOnce({ messageId: "<s1@host>" } as never);
+		const mailer = createMailer({
+			driver: "smtp",
+			smtpUrl: "smtp://localhost:1025",
+			from: "noreply@x",
+			logger: pino({ level: "silent" }),
+		});
+		const sent = await mailer.send({
+			to: "b@x",
+			cc: "c@x",
+			subject: "Hi",
+			text: "Hello",
+			headers: { "X-A": "1" },
+			variables: { v: "1" },
+			tags: ["t"],
+			priority: true,
+			attachments: [{ filename: "f.txt", content: new Blob(["yo"]) }],
+		});
+		expect(sent).toEqual({ id: "<s1@host>" });
+		expect(sendMail).toHaveBeenLastCalledWith({
+			from: "noreply@x",
+			to: "b@x",
+			cc: "c@x",
+			subject: "Hi",
+			text: "Hello",
+			headers: { "X-A": "1" },
+			priority: "high",
+			attachments: [{ filename: "f.txt", content: Buffer.from("yo") }],
+		});
+	});
+});
+
 describe("the mailgun driver", () => {
 	it("posts the message to the domain's endpoint with the API key", async () => {
 		const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
@@ -57,6 +91,49 @@ describe("the mailgun driver", () => {
 		const form = init.body as FormData;
 		expect(form.getAll("to")).toEqual(["a@x", "b@x"]);
 		expect(form.get("html")).toBe("<p>Hello</p>");
+	});
+
+	it("sends headers, variables, tags, cc/bcc, attachments and priority; returns the message id", async () => {
+		const fetch = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ id: "<abc@mg>", message: "Queued" }), { status: 200 }),
+		);
+		const mailer = createMailer({
+			driver: "mailgun",
+			mailgun: { apiKey: "k", domain: "d" },
+			from: "f@x",
+			logger: pino({ level: "silent" }),
+			fetch: fetch as unknown as typeof globalThis.fetch,
+		});
+		const sent = await mailer.send({
+			to: "a@x",
+			cc: "c@x",
+			bcc: ["d@x", "e@x"],
+			subject: "s",
+			html: "<p>h</p>",
+			replyTo: "r@x",
+			headers: { "List-Unsubscribe": "<https://u>" },
+			variables: { job_id: "j1" },
+			tags: ["login"],
+			priority: true,
+			attachments: [
+				{ filename: "a.txt", content: new TextEncoder().encode("hi"), contentType: "text/plain" },
+			],
+		});
+		expect(sent).toEqual({ id: "<abc@mg>" });
+		const form = (fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as FormData;
+		expect(form.get("cc")).toBe("c@x");
+		expect(form.getAll("bcc")).toEqual(["d@x", "e@x"]);
+		expect(form.get("text")).toBeNull();
+		expect(form.get("h:Reply-To")).toBe("r@x");
+		expect(form.get("h:List-Unsubscribe")).toBe("<https://u>");
+		expect(form.get("v:job_id")).toBe("j1");
+		expect(form.getAll("o:tag")).toEqual(["login"]);
+		expect(form.get("o:tracking")).toBe("no");
+		expect(form.get("h:X-Priority")).toBe("1");
+		const file = form.get("attachment") as File;
+		expect(file.name).toBe("a.txt");
+		expect(await file.text()).toBe("hi");
 	});
 
 	it("throws when Mailgun refuses, so a job retries", async () => {

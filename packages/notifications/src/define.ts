@@ -43,6 +43,10 @@ export interface PushContent {
 	body?: string;
 	/** string pairs the mobile app receives with the push */
 	data?: Record<string, string>;
+	/** an image shown with it, where the platform supports one */
+	imageUrl?: string;
+	/** web push: the page a click opens */
+	link?: string;
 }
 
 export interface NotificationDefinition<

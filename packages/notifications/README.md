@@ -28,3 +28,9 @@ Per channel, in `createNotifier({ delivery: { email: "at-least-once" } })`:
   `{ idempotencyKey }` (`<notification id>:<channel>:<user id>`, the same on every retry) to hand to
   a provider that dedupes on it. Needs the `delivered_*` columns (`claimPending`/`markSent` in the
   store).
+
+## Senders
+
+`twilioSms`, `fcmPush` (FCM HTTP v1 with a service account; `PushContent` takes `title`, `body`,
+`data`, `imageUrl` and a web-push `link`; unregistered tokens come back to forget) and console
+fallbacks. For email, a `@tatara/email` mailer is the `email` sender: `email: mailer`.

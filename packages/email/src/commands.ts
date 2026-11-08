@@ -6,7 +6,7 @@ import type { EmailMessage } from "./index.ts";
 export function emailCommands({
 	sendEmail,
 }: {
-	sendEmail(message: EmailMessage): Promise<void>;
+	sendEmail(message: EmailMessage): Promise<unknown>;
 }): CommandDefinition[] {
 	return [
 		defineCommand({
