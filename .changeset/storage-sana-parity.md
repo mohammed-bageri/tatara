@@ -1,0 +1,5 @@
+---
+"@tatara/storage": minor
+---
+
+`Storage` gains `uploadUrl(key, { contentType, contentLength, expiresInSeconds })` (signed PUT bound to the declared type and length), `url(key, { responseContentType, responseContentDisposition, expiresInSeconds })` (a bare number still works), `list(prefix)`, `copy(from, to)` and an optional `ensureBucket()`; `delete` of a missing object succeeds. New: a native GCS driver (`@tatara/storage/gcs`, `@google-cloud/storage` as an optional peer), `s3ClientConfig({ provider: "s3" | "minio" | "oci" | "gcs", ... })` presets, `presignClient` for a public signing endpoint, `uploadKeys` over app-declared upload contexts, `sanitizeFileName`, `publicUrl`, `organizationIdFromKey`, upload validation (`validateFileUpload`, `MIME_TYPE_MAP`, `contentDispositionFor`, ...), and orphan reconciliation over an app's `StorageObjectStore` (`findOrphanObjects`, `reconcileOrphanObjects`, `reconcileOrphanObjectsCommand`). `storage:check` now also signs a URL, cleans up on failure, and needs only `storage` from the app.
