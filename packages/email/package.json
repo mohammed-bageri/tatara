@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/email",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "tatara email: SMTP or console mailer",
 	"type": "module",
 	"license": "MIT",
