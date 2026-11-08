@@ -24,6 +24,11 @@ export interface ProjectConfig {
 	generated?: { cli: string; files: Record<string, string> };
 	/** packages copied into src/ejected by `tatara eject`: name → version ejected */
 	ejected?: Record<string, string>;
+	/**
+	 * Where the app keeps what a package's commands and seeds import, when it isn't the default:
+	 * `{ "#core/authz/index": "#modules/authorization/index" }` (default path → the app's path).
+	 */
+	paths?: Record<string, string>;
 }
 
 export class NotATataraProject extends Error {

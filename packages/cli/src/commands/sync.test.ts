@@ -71,6 +71,21 @@ describe("sync: commands from packages", () => {
 		expect(text).toContain("fromPackages.filter((c) => !own.some((o) => o.name === c.name))");
 	});
 
+	it('imports a package\'s argument from where tatara.json "paths" says the app keeps it', async () => {
+		const root = app({});
+		const config = JSON.parse(readFileSync(join(root, "tatara.json"), "utf8"));
+		writeFileSync(
+			join(root, "tatara.json"),
+			JSON.stringify({ ...config, paths: { "#core/email/send": "#modules/email/send" } }),
+		);
+		await sync(loadProject(root));
+		const text = generated(root, "commands.ts");
+		expect(text).toContain('import { sendEmail } from "#modules/email/send";');
+		expect(text).not.toContain('"#core/email/send"');
+		// arguments with no entry keep the package's default
+		expect(text).toContain('import { env } from "#core/config/env";');
+	});
+
 	it("reads an ejected package's manifest from its copy", async () => {
 		const root = app(
 			{

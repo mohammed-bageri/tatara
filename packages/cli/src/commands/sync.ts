@@ -155,7 +155,14 @@ async function contributions(project: Project, kind: ContributionKind): Promise<
 		} & Partial<Record<ContributionKind, Contribution[]>>;
 		out.push(...((ejected.includes(name) ? json[kind] : json.tatara?.[kind]) ?? []));
 	}
-	return out;
+	// the app may keep an instance somewhere other than the package's default (tatara.json "paths")
+	const paths = project.config.paths ?? {};
+	return out.map((c) => ({
+		...c,
+		args: Object.fromEntries(
+			Object.entries(c.args).map(([arg, spec]) => [arg, paths[spec] ?? spec]),
+		),
+	}));
 }
 
 /**
