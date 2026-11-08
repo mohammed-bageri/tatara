@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/authz",
-	"version": "0.9.0",
+	"version": "0.9.1",
 	"description": "tatara authz: permission catalog, resolver, guards, role and member services, and routes",
 	"type": "module",
 	"license": "MIT",
@@ -45,10 +45,10 @@
 	},
 	"peerDependencies": {
 		"@hono/zod-openapi": "^1.6.3",
-		"@tatara/auth": "^0.2.0",
+		"@tatara/auth": "^0.2.2",
 		"@tatara/core": "^0.1.3",
-		"@tatara/db": "^0.2.2",
-		"@tatara/http": "^0.1.5",
+		"@tatara/db": "^0.3.0",
+		"@tatara/http": "^0.2.0",
 		"better-auth": "^1.7.8",
 		"drizzle-orm": "^0.45.4",
 		"hono": "^4.13.13",
