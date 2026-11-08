@@ -1,5 +1,11 @@
 # @tatara/cli
 
+## 0.18.0
+
+### Minor Changes
+
+- f14c4eb: tatara.json `paths`: where the app keeps what a package's commands and seeds import, when it isn't the default (e.g. `{ "#core/authz/index": "#modules/authorization/index" }`), so an app can keep a package's instance in a module.
+
 ## 0.17.0
 
 ### Minor Changes
