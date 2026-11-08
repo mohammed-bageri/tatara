@@ -13,7 +13,8 @@ export type Addon =
 	| "admin"
 	| "storage"
 	| "email"
-	| "i18n";
+	| "i18n"
+	| "ai";
 export type PackageManager = "pnpm" | "npm" | "bun";
 
 export interface AppOptions {

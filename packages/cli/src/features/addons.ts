@@ -1036,3 +1036,55 @@ export const i18n: Feature = {
 		},
 	],
 };
+
+const AI_PROVIDER = 'z.enum(["gemini", "openai"])';
+
+export const ai: Feature = {
+	id: "ai",
+	kind: "addon",
+	label: "AI (Gemini / OpenAI)",
+	dependencies: ["@tatara/ai", "@google/genai", "openai"],
+	// its preinstall script only echoes; pnpm refuses an unlisted one
+	allowBuilds: ["@google/genai"],
+	env: [
+		{
+			key: "AI_DEFAULT_PROVIDER",
+			schema: `${AI_PROVIDER}.default("gemini")`,
+			example: "gemini",
+		},
+		{
+			key: "AI_FALLBACK_PROVIDER",
+			schema: `${AI_PROVIDER}.optional()`,
+			example: "",
+			comment:
+				"Takes over on quota, billing or model-unavailable errors; needs its API key. Empty: no fallback",
+		},
+		{
+			key: "AI_PROVIDER_COOLDOWN_MS",
+			schema: "z.coerce.number().int().nonnegative().default(60000)",
+			example: "60000",
+			comment: "How long a provider that ran out is tried last (0: always try it first)",
+		},
+		{ key: "GEMINI_API_KEY", schema: "z.string().optional()", example: "" },
+		{ key: "OPENAI_API_KEY", schema: "z.string().optional()", example: "" },
+	],
+	slots: [
+		{
+			file: "AGENTS.md",
+			slot: "sections",
+			content: `## AI
+
+- \`ai\` from \`#core/ai/index\`: \`ai.generateText(prompt, { system, jsonMode, file, model, temperature, maxTokens })\`
+  returns \`{ text, provider, model, usage, costUsd }\`; \`ai.generateJson(prompt, schema)\` parses and validates;
+  \`ai.embed(texts, { dimensions })\` never falls back (vectors from different models don't compare).
+- PDFs and images: pass the raw bytes as \`file: { data, mimeType }\`. The model reads them natively, which is
+  the only approach that handles Arabic/RTL and scans; don't extract text first.
+- \`AI_DEFAULT_PROVIDER\` answers; on quota, billing or model-unavailable errors \`AI_FALLBACK_PROVIDER\` takes
+  over. Store \`provider\` and \`model\` from the response, not the default.
+- Failures throw \`AIError\` (\`code\`, \`kind\`: exhaustion | safety | auth | other). It is not an \`AppError\`:
+  catch it in the service and throw the error the route should answer with.
+- Tests never call a provider: build \`createAI\` with a fake \`AIProvider\`, or mock \`#core/ai/index\`.
+`,
+		},
+	],
+};

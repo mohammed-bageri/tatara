@@ -1,0 +1,54 @@
+{
+	"name": "@tatara/ai",
+	"version": "0.0.0",
+	"description": "tatara AI: one client over Gemini and OpenAI with exhaustion fallback and cooldown, native PDF/image input, JSON mode, embeddings and cost estimates",
+	"type": "module",
+	"license": "MIT",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist",
+		"src",
+		"!src/**/*.test.ts"
+	],
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit"
+	},
+	"peerDependencies": {
+		"@google/genai": "^1.50.1",
+		"openai": "^6.42.0"
+	},
+	"peerDependenciesMeta": {
+		"@google/genai": {
+			"optional": true
+		},
+		"openai": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@google/genai": "^1.50.1",
+		"openai": "^6.42.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mohammed-bageri/tatara-cli.git",
+		"directory": "packages/ai"
+	},
+	"homepage": "https://github.com/mohammed-bageri/tatara-cli#readme",
+	"bugs": {
+		"url": "https://github.com/mohammed-bageri/tatara-cli/issues"
+	}
+}

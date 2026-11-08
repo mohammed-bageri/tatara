@@ -1,0 +1,7 @@
+---
+"@tatara/ai": minor
+"@tatara/cli": minor
+"create-tatara": minor
+---
+
+`@tatara/ai`: one AI client over Gemini and OpenAI. `createAI({ providers, default, fallback, cooldownMs, logger, pricing })` with `generateText` (system, JSON mode, native PDF/image input, model, temperature, max tokens), `generateJson` (tolerant parse, optional schema) and `embed`. Falls back only on exhaustion errors (quota, billing, model unavailable) and tries an exhausted provider last for a cooldown window; reports who answered, usage and an estimated cost from an extensible pricing table. Typed `AIError` with `code` and `kind` (exhaustion, safety, auth, other). `@google/genai` and `openai` are optional peers. New `ai` add-on: `src/core/ai/index.ts` and the `AI_*`, `GEMINI_API_KEY` and `OPENAI_API_KEY` env vars.

@@ -1,6 +1,8 @@
 packages:
   - packages/*
 allowBuilds:
+  # its preinstall script only echoes
+  '@google/genai': false
   esbuild: true
   msgpackr-extract: false
   # its install script only checks versions; OTLP over HTTP/JSON never loads it
