@@ -60,6 +60,7 @@ const ADDONS = [
 	"storage",
 	"email",
 	"i18n",
+	"ai",
 ] as const;
 const PMS = ["pnpm", "npm", "bun"] as const;
 
@@ -179,6 +180,7 @@ async function prompt(name: string, flags: NewFlags): Promise<AppOptions> {
 		storage: "File storage",
 		email: "Email",
 		i18n: "i18n",
+		ai: "AI (Gemini / OpenAI)",
 	};
 	const addons: Addon[] =
 		flags.addons !== undefined

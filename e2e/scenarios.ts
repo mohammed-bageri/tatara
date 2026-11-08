@@ -16,6 +16,7 @@ export interface Scenario {
 		| "storage"
 		| "email"
 		| "i18n"
+		| "ai"
 	)[];
 	pm: "pnpm" | "npm" | "bun";
 	/** after the other steps: `tatara eject <eject> --with-dependents`, then install and verify */
@@ -51,8 +52,17 @@ const ALL_ADDONS = [
 	"storage",
 	"email",
 	"i18n",
+	"ai",
 ] as const;
-const NO_AUTH_ADDONS = ["jobs", "cache", "observability", "storage", "email", "i18n"] as const;
+const NO_AUTH_ADDONS = [
+	"jobs",
+	"cache",
+	"observability",
+	"storage",
+	"email",
+	"i18n",
+	"ai",
+] as const;
 const ALL_METHODS = ["email-otp", "phone-otp", "password", "orgs"] as const;
 
 const core: Scenario[] = [];
