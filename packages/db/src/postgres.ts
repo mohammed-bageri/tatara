@@ -94,3 +94,53 @@ export function commandLedger(url: string): {
 			}),
 	};
 }
+
+/** Anything with `.toSQL()`: Drizzle query builders and `sql` objects. */
+export interface SqlConvertible {
+	toSQL(): { sql: string; params: unknown[] };
+}
+
+/** A pool or client that runs a parametrised query, like `pg.Pool`. */
+export interface Queryable {
+	query(sql: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+export interface ExplainOptions {
+	/** run the statement for real row counts and timings — this executes writes */
+	analyze?: boolean;
+	/** buffer usage; only with `analyze` */
+	buffers?: boolean;
+	verbose?: boolean;
+}
+
+function explainPrefix(options: ExplainOptions, format: "JSON" | "TEXT"): string {
+	const flags = [
+		...(options.analyze ? ["ANALYZE"] : []),
+		...(options.verbose ? ["VERBOSE"] : []),
+		...(options.buffers && options.analyze ? ["BUFFERS"] : []),
+		`FORMAT ${format}`,
+	];
+	return `EXPLAIN (${flags.join(", ")}) `;
+}
+
+/** The query's plan as Postgres' JSON (`[{ Plan: … }]`), for assertions like "no Seq Scan". Plan only unless `analyze`. */
+export async function explain(
+	client: Queryable,
+	query: SqlConvertible,
+	options: ExplainOptions = {},
+): Promise<unknown> {
+	const { sql, params } = query.toSQL();
+	const { rows } = await client.query(explainPrefix(options, "JSON") + sql, params);
+	return rows[0]?.["QUERY PLAN"];
+}
+
+/** The plan as psql prints it. */
+export async function explainText(
+	client: Queryable,
+	query: SqlConvertible,
+	options: ExplainOptions = {},
+): Promise<string> {
+	const { sql, params } = query.toSQL();
+	const { rows } = await client.query(explainPrefix(options, "TEXT") + sql, params);
+	return rows.map((r) => r["QUERY PLAN"]).join("\n");
+}
