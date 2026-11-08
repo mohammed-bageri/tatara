@@ -7,6 +7,7 @@ export interface Scenario {
 	addons: (
 		| "authz"
 		| "jobs"
+		| "events"
 		| "cache"
 		| "notifications"
 		| "realtime"
@@ -58,13 +59,15 @@ const core: Scenario[] = [];
 for (const orm of ["drizzle", "prisma"] as const) {
 	for (const database of ["postgres", "mysql"] as const) {
 		const short = `${orm === "drizzle" ? "dz" : "pr"}-${database === "postgres" ? "pg" : "my"}`;
+		// the events add-on is Postgres + Drizzle only
+		const events = orm === "drizzle" && database === "postgres" ? (["events"] as const) : [];
 		core.push(
 			scenario(`${short}-better-auth-full`, {
 				orm,
 				database,
 				auth: "better-auth",
 				authMethods: [...ALL_METHODS],
-				addons: [...ALL_ADDONS],
+				addons: [...ALL_ADDONS, ...events],
 				pm: "pnpm",
 			}),
 			scenario(`${short}-keycloak-full`, {
@@ -72,14 +75,14 @@ for (const orm of ["drizzle", "prisma"] as const) {
 				database,
 				auth: "better-auth",
 				authMethods: ["keycloak"],
-				addons: [...ALL_ADDONS],
+				addons: [...ALL_ADDONS, ...events],
 				pm: "pnpm",
 			}),
 			scenario(`${short}-no-auth-full`, {
 				orm,
 				database,
 				auth: "none",
-				addons: [...NO_AUTH_ADDONS],
+				addons: [...NO_AUTH_ADDONS, ...events],
 				pm: "pnpm",
 			}),
 			scenario(`${short}-minimal`, { orm, database, auth: "none", addons: [], pm: "pnpm" }),

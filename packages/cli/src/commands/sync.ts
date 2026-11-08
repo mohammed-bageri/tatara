@@ -30,6 +30,8 @@ function identifier(path: string, prefix: string): string {
 					"emails",
 					"notifications",
 					"channels",
+					"events",
+					"event-subscribers",
 				].includes(p),
 		);
 	const raw = `${prefix}_${parts.join("_")}`.replace(/[^A-Za-z0-9_]/g, "_");
@@ -92,6 +94,23 @@ function definitionList(
 ${imports.join("\n")}${imports.length ? "\n" : ""}
 // biome-ignore lint/suspicious/noExplicitAny: every definition, whatever its data
 export const ${exportName} = [${names.join(", ")}] as const satisfies readonly ${typeName}<string, any>[];
+`;
+}
+
+/**
+ * Each `events/*.ts` default-exports one definition or an array of them; their literal names and
+ * schemas are kept, so `EventPayloads` types emits by name.
+ */
+function eventList(files: string[]): string {
+	const imports = files.map((f) => `import ${identifier(f, "event")} from "${specifier(f)}";`);
+	const names = files.map((f) => identifier(f, "event"));
+	return `${HEADER}import type { EventDefinition, EventPayloadsOf } from "@tatara/events";
+${imports.join("\n")}${imports.length ? "\n" : ""}
+export const events = [${names.join(", ")}].flat() satisfies readonly EventDefinition[];
+
+/** event name → the payload \`emit\` takes */
+export type EventPayloads = EventPayloadsOf<typeof events>;
+export type EventName = keyof EventPayloads;
 `;
 }
 
@@ -247,6 +266,28 @@ export async function sync(project: Project = loadProject()): Promise<SyncResult
 				typeImport: 'import type { ScheduleDefinition } from "@tatara/jobs";',
 				typeName: "ScheduleDefinition",
 				exportName: "schedules",
+			}),
+			written,
+		);
+	}
+
+	if (project.has("events")) {
+		const events = await find(
+			root,
+			dirs.map((d) => `${d}/events/*.ts`),
+		);
+		await write(join(out, "events.ts"), eventList(events), written);
+		const subscribers = await find(
+			root,
+			dirs.map((d) => `${d}/event-subscribers/*.ts`),
+		);
+		await write(
+			join(out, "subscribers.ts"),
+			listModule(subscribers, {
+				prefix: "subscriber",
+				typeImport: 'import type { Subscriber } from "@tatara/events";',
+				typeName: "Subscriber",
+				exportName: "subscribers",
 			}),
 			written,
 		);

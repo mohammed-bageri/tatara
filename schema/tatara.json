@@ -32,6 +32,7 @@
 				"enum": [
 					"authz",
 					"jobs",
+					"events",
 					"cache",
 					"notifications",
 					"realtime",

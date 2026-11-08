@@ -149,3 +149,45 @@ describe("sync: seeds", () => {
 		expect(existsSync(join(root, "src/generated/seeds.ts"))).toBe(false);
 	});
 });
+
+describe("sync: events", () => {
+	it("lists event definitions and subscribers from core and modules", async () => {
+		const root = app({
+			"package.json": JSON.stringify({ name: "app", dependencies: {} }),
+			"tatara.json": JSON.stringify({
+				version: "0.14.0",
+				name: "app",
+				orm: "drizzle",
+				database: "postgres",
+				auth: "none",
+				authMethods: [],
+				addons: ["events", "jobs", "cache"],
+				packageManager: "pnpm",
+			}),
+			"src/core/audit/events/login.ts": "export default {};\n",
+			"src/modules/billing/events/invoice.ts": "export default [];\n",
+			"src/modules/billing/events/invoice.test.ts": "",
+			"src/modules/billing/event-subscribers/send-receipt.ts": "export default {};\n",
+		});
+		await sync(loadProject(root));
+		const events = generated(root, "events.ts");
+		expect(events).toContain('import event_core_audit_login from "#core/audit/events/login";');
+		expect(events).toContain(
+			'import event_modules_billing_invoice from "#modules/billing/events/invoice";',
+		);
+		expect(events).toContain(
+			"export const events = [event_core_audit_login, event_modules_billing_invoice].flat() satisfies readonly EventDefinition[];",
+		);
+		expect(events).toContain("export type EventPayloads = EventPayloadsOf<typeof events>;");
+		expect(events).not.toContain("invoice.test");
+		expect(generated(root, "subscribers.ts")).toContain(
+			'import subscriber_modules_billing_send_receipt from "#modules/billing/event-subscribers/send-receipt";',
+		);
+	});
+
+	it("writes no event lists without the add-on", async () => {
+		const root = app({ "src/modules/billing/events/invoice.ts": "export default {};\n" });
+		await sync(loadProject(root));
+		expect(existsSync(join(root, "src/generated/events.ts"))).toBe(false);
+	});
+});

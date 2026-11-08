@@ -32,6 +32,18 @@ describe("validateOptions", () => {
 		expect(() => validateOptions({ ...base, ...patch })).toThrow(message);
 	});
 
+	it("brings jobs and the cache with events, which need Postgres with Drizzle", () => {
+		expect(validateOptions({ ...base, addons: ["events"] }).addons).toEqual([
+			"events",
+			"jobs",
+			"cache",
+		]);
+		for (const patch of [{ orm: "prisma" as const }, { database: "mysql" as const }])
+			expect(() => validateOptions({ ...base, ...patch, addons: ["events"] })).toThrow(
+				/events add-on needs Postgres with Drizzle/,
+			);
+	});
+
 	it("accepts the admin add-on with any sign-in method: staff carry their own roles", () => {
 		const options = { ...base, authMethods: ["password" as const], addons: ["admin" as const] };
 		expect(validateOptions(options)).toEqual(options);

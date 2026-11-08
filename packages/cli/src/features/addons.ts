@@ -267,6 +267,37 @@ export const jobs: Feature = {
 	],
 };
 
+export const events: Feature = {
+	id: "events",
+	kind: "addon",
+	label: "Domain events (transactional outbox)",
+	dependencies: ["@tatara/events"],
+	slots: [
+		{
+			file: "AGENTS.md",
+			slot: "sections",
+			content: `## Domain events
+
+- "This happened" notices between modules. Declare events in \`events/<name>.ts\`
+  (\`export default defineEvent({ name: "billing.invoice.paid", schema })\`, or an array of them,
+  from \`@tatara/events\`); react in \`event-subscribers/<name>.ts\`
+  (\`export default defineSubscriber({ name, event, handle })\`). \`tatara sync\` lists both.
+- Emit in the transaction that makes the change: \`events.emit(tx, invoicePaid, { payload, orgId,
+  aggregateId, actor })\` from \`#core/events/index\`. Inside \`events.transaction(fn)\` the event is
+  published right after commit; in a plain \`db.transaction\` the relay schedule picks it up within
+  seconds. A rollback leaves no event. \`events.afterCommit(hook)\` runs work after commit only.
+- Delivery is at-least-once, one delivery per (event, subscriber), retried alone with backoff and
+  dead after 8 attempts, with no ordering: **subscribers must be idempotent per \`event.id\`**.
+- Payloads are validated at emit; keep secrets and free text out of them. Bump \`version\` for a
+  breaking payload change.
+- Schedules \`events-relay\`, \`events-retry\`, \`events-reconcile\` and \`events-prune\` (published
+  events older than 13 months) run in \`apps/cron\`; the worker runs deliveries. After fixing a dead
+  delivery's handler: \`tatara run events:requeue-dead --subscriber <name>\`.
+`,
+		},
+	],
+};
+
 const cacheDriver = (drivers: string[]) => ({
 	key: "CACHE_DRIVER",
 	schema: `localDefault(z.enum(${JSON.stringify(drivers)}), "redis")`,
