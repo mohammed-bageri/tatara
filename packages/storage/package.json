@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/storage",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "tatara storage: a Storage contract with local, S3 and GCS drivers, upload keys, validation and orphan reconciliation",
 	"type": "module",
 	"license": "MIT",
