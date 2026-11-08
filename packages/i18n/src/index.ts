@@ -1,54 +1,221 @@
-/** @tatara/i18n: dictionaries, `t()` and language detection for Hono. */
-import type { Env, MiddlewareHandler } from "hono";
+/** @tatara/i18n: dictionaries, `t()`, language detection for Hono and localised zod messages. */
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { Context, Env, MiddlewareHandler } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
+import type { CookieOptions } from "hono/utils/cookie";
+
+export { withEnumLabels, withEnumLabelsAll } from "./enum-labels.ts";
+export { type LoadDictionariesOptions, loadDictionaries } from "./load.ts";
+export {
+	type ZodErrorMapOptions,
+	type ZodIssueLike,
+	type ZodMessageKind,
+	zodErrorMap,
+} from "./zod.ts";
 
 export type Dictionary = { [key: string]: string | Dictionary };
 
-export interface I18nOptions {
-	/** language code → strings, e.g. { en, ar } from src/locales */
-	dictionaries: Record<string, Dictionary>;
-	defaultLanguage: string;
+/** Variables for a message; `count` (a number) also picks the plural form (`key_one`, `key_other`, `key_zero`). */
+export type TranslateVars = Record<string, unknown>;
+
+/** A translator bound to one language, i18next-style: `t("errors:notFound", { name, count, defaultValue })`. */
+export type Translator = (key: string, vars?: TranslateVars & { defaultValue?: string }) => string;
+
+export interface LanguageDetectionOptions {
+	/** query parameter, or `false` to ignore the query (default "lang") */
+	query?: string | false;
+	/** cookie name, or `false` to ignore cookies (default "lang") */
+	cookie?: string | false;
+	/** read Accept-Language (default true) */
+	header?: boolean;
+	/** write the detected language to the cookie when it differs, e.g. `{ maxAge: 31536000, httpOnly: true }` */
+	persist?: CookieOptions;
 }
 
-function lookup(dict: Dictionary | undefined, key: string): string | undefined {
-	let node: string | Dictionary | undefined = dict;
-	for (const part of key.split(".")) {
+export interface I18nOptions {
+	/** language code → strings, e.g. { en, ar } from src/locales, or `loadDictionaries()` */
+	dictionaries: Record<string, Dictionary>;
+	defaultLanguage: string;
+	detection?: LanguageDetectionOptions;
+}
+
+type Node = string | Dictionary | undefined;
+
+// "ns:a.b" reads dictionary.ns.a.b, so a namespace is just the top-level key.
+function path(key: string): string[] {
+	const ns = key.indexOf(":");
+	const parts = (ns === -1 ? key : key.slice(ns + 1)).split(".");
+	return ns === -1 ? parts : [key.slice(0, ns), ...parts];
+}
+
+function lookup(dict: Dictionary | undefined, key: string): Node {
+	let node: Node = dict;
+	for (const part of path(key)) {
 		if (!node || typeof node === "string") return undefined;
 		node = node[part];
 	}
-	return typeof node === "string" ? node : undefined;
+	return node;
 }
 
-export function createI18n({ dictionaries, defaultLanguage }: I18nOptions) {
-	const languages = Object.keys(dictionaries);
+const VARIABLE = /\{\{\s*(\w+)\s*\}\}|\{(\w+)\}/g;
 
-	/** Translates `key` ("errors.NOT_FOUND"), falling back to the default language, then `fallback`. */
-	function t(
-		language: string,
-		key: string,
-		fallback = key,
-		vars: Record<string, string> = {},
-	): string {
-		const text =
-			lookup(dictionaries[language], key) ?? lookup(dictionaries[defaultLanguage], key) ?? fallback;
-		return text.replace(/\{(\w+)\}/g, (_, name: string) => vars[name] ?? `{${name}}`);
+function interpolate(text: string, vars: TranslateVars): string {
+	return text.replace(VARIABLE, (match, double?: string, single?: string) => {
+		const value = vars[(double ?? single) as string];
+		return value === undefined || value === null ? match : String(value);
+	});
+}
+
+export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I18nOptions) {
+	const languages = Object.keys(dictionaries);
+	const supported = new Set(languages);
+	const storage = new AsyncLocalStorage<string>();
+	const pluralRules = new Map<string, Intl.PluralRules>();
+	const queryKey = detection.query ?? "lang";
+	const cookieName = detection.cookie ?? "lang";
+
+	function plural(language: string, count: number): string {
+		let rules = pluralRules.get(language);
+		if (!rules) {
+			rules = new Intl.PluralRules(language);
+			pluralRules.set(language, rules);
+		}
+		return rules.select(count);
 	}
 
-	/** ?lang, then the `lang` cookie, then Accept-Language; sets `c.var.language`. */
-	const detectLanguage = createMiddleware<{ Variables: { language: string } }>(async (c, next) => {
-		const candidates = [
-			c.req.query("lang"),
-			/(?:^|;\s*)lang=([^;]+)/.exec(c.req.header("cookie") ?? "")?.[1],
-			...(c.req.header("accept-language") ?? "")
-				.split(",")
-				.map((part) => part.split(";")[0]?.trim().toLowerCase().split("-")[0]),
-		];
-		const language = candidates.find((l) => l && languages.includes(l)) ?? defaultLanguage;
+	/** `language` when it is supported, otherwise the default language. */
+	function resolveLanguage(language: string | null | undefined): string {
+		return language && supported.has(language) ? language : defaultLanguage;
+	}
+
+	function find(language: string, key: string, count: unknown): string | undefined {
+		for (const lang of language === defaultLanguage ? [language] : [language, defaultLanguage]) {
+			const dict = dictionaries[lang];
+			if (typeof count === "number") {
+				const forms = count === 0 ? ["zero", plural(lang, count)] : [plural(lang, count)];
+				for (const form of forms) {
+					const text = lookup(dict, `${key}_${form}`);
+					if (typeof text === "string") return text;
+				}
+			}
+			const text = lookup(dict, key);
+			if (typeof text === "string") return text;
+		}
+		return undefined;
+	}
+
+	/** Translates `key` ("errors.NOT_FOUND" or "errors:NOT_FOUND"), falling back to the default language, then `fallback`. */
+	function t(language: string, key: string, fallback = key, vars: TranslateVars = {}): string {
+		return interpolate(find(language, key, vars.count) ?? fallback, vars);
+	}
+
+	/** A translator for one language (unsupported → default); missing keys give `defaultValue`, else the key. */
+	function translator(language: string | null | undefined): Translator {
+		const lang = resolveLanguage(language);
+		return (key, vars = {}) => t(lang, key, vars.defaultValue ?? key, vars);
+	}
+
+	/** True when `key` has a string in `language` (or the default language). */
+	function exists(key: string, language: string = defaultLanguage): boolean {
+		return find(resolveLanguage(language), key, undefined) !== undefined;
+	}
+
+	/** The raw entry at `key` in one language's dictionary, no fallback: a string, a subtree or undefined. */
+	function resource(language: string, key: string): string | Dictionary | undefined {
+		return lookup(dictionaries[language], key);
+	}
+
+	/** The request's language inside `detectLanguage`/`withLanguage`, else the default language. */
+	function currentLanguage(): string {
+		return storage.getStore() ?? defaultLanguage;
+	}
+
+	/** Runs `fn` with `currentLanguage()` set to `language` (for jobs, CLI, tests). */
+	function withLanguage<T>(language: string, fn: () => T): T {
+		return storage.run(resolveLanguage(language), fn);
+	}
+
+	/** The value for `language` from per-language values (e.g. `{ en: row.nameEn, ar: row.nameAr }`); empty falls back to the default language. */
+	function pick(
+		language: string,
+		values: Partial<Record<string, string | null | undefined>>,
+	): string {
+		return values[language] || values[defaultLanguage] || "";
+	}
+
+	function accepted(header: string): string | undefined {
+		const ranked = header
+			.split(",")
+			.map((part, index) => {
+				const [tag = "", ...params] = part.trim().toLowerCase().split(";");
+				const q = params.map((p) => /^\s*q=([\d.]+)/.exec(p)?.[1]).find(Boolean);
+				return { tag: tag.trim(), q: q === undefined ? 1 : Number(q), index };
+			})
+			.filter((entry) => entry.tag && entry.q > 0)
+			.sort((a, b) => b.q - a.q || a.index - b.index);
+		for (const { tag } of ranked) {
+			const match = languages.find((l) => l.toLowerCase() === tag) ?? tag.split("-")[0];
+			if (match && supported.has(match)) return match;
+		}
+		return undefined;
+	}
+
+	function apply(c: Context, language: string, next: () => Promise<void>) {
 		c.set("language", language);
 		c.header("content-language", language);
-		await next();
+		return storage.run(language, next);
+	}
+
+	function explicitQuery(c: Context): string | undefined {
+		const value = queryKey ? c.req.query(queryKey) : undefined;
+		return value && supported.has(value) ? value : undefined;
+	}
+
+	/** ?lang, then the `lang` cookie, then Accept-Language; sets `c.var.language` and `currentLanguage()`. */
+	const detectLanguage = createMiddleware<{ Variables: { language: string } }>(async (c, next) => {
+		const fromCookie = cookieName ? getCookie(c, cookieName) : undefined;
+		const language =
+			explicitQuery(c) ??
+			(fromCookie && supported.has(fromCookie) ? fromCookie : undefined) ??
+			(detection.header === false ? undefined : accepted(c.req.header("accept-language") ?? "")) ??
+			defaultLanguage;
+		if (detection.persist && cookieName && fromCookie !== language)
+			setCookie(c, cookieName, language, detection.persist);
+		await apply(c, language, next);
 	}) as unknown as MiddlewareHandler<Env>;
 	// typed as adding nothing to the env, so it mounts on any app whose env has `language`
 
-	return { languages, t, detectLanguage };
+	/**
+	 * Replaces the detected language with `preferred(c)` (e.g. the signed-in user's stored
+	 * preference) when it is supported, unless the request asked for one with the query
+	 * parameter. Mount after `detectLanguage` and after whatever sets the user.
+	 */
+	function preferLanguage(
+		preferred: (c: Context) => string | null | undefined | Promise<string | null | undefined>,
+	): MiddlewareHandler<Env> {
+		return async (c, next) => {
+			if (explicitQuery(c)) return next();
+			const language = await preferred(c);
+			if (!language || !supported.has(language)) return next();
+			await apply(c, language, next);
+		};
+	}
+
+	return {
+		languages,
+		defaultLanguage,
+		t,
+		translator,
+		exists,
+		resource,
+		resolveLanguage,
+		currentLanguage,
+		withLanguage,
+		pick,
+		detectLanguage,
+		preferLanguage,
+	};
 }
+
+export type I18n = ReturnType<typeof createI18n>;

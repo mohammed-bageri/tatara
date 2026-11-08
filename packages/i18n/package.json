@@ -1,7 +1,7 @@
 {
 	"name": "@tatara/i18n",
 	"version": "0.1.0",
-	"description": "tatara i18n: dictionaries, t() and language detection for Hono",
+	"description": "tatara i18n: dictionaries, t(), plurals, language detection for Hono and localised zod messages",
 	"type": "module",
 	"license": "MIT",
 	"sideEffects": false,
@@ -27,7 +27,8 @@
 		"hono": "^4.13.13"
 	},
 	"devDependencies": {
-		"hono": "^4.13.13"
+		"hono": "^4.13.13",
+		"zod": "^4.6.7"
 	},
 	"publishConfig": {
 		"access": "public"
