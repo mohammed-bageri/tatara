@@ -15,15 +15,31 @@
 		"packageManager"
 	],
 	"properties": {
-		"$schema": { "type": "string" },
-		"version": { "type": "string", "description": "tatara version the app was created with" },
-		"name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-		"orm": { "enum": ["drizzle", "prisma", "none"] },
-		"database": { "enum": ["postgres", "mysql", "none"] },
-		"auth": { "enum": ["better-auth", "none"] },
+		"$schema": {
+			"type": "string"
+		},
+		"version": {
+			"type": "string",
+			"description": "tatara version the app was created with"
+		},
+		"name": {
+			"type": "string",
+			"pattern": "^[a-z][a-z0-9-]*$"
+		},
+		"orm": {
+			"enum": ["drizzle", "prisma", "none"]
+		},
+		"database": {
+			"enum": ["postgres", "mysql", "none"]
+		},
+		"auth": {
+			"enum": ["better-auth", "none"]
+		},
 		"authMethods": {
 			"type": "array",
-			"items": { "enum": ["email-otp", "phone-otp", "password", "keycloak", "orgs"] },
+			"items": {
+				"enum": ["email-otp", "phone-otp", "password", "keycloak", "orgs"]
+			},
 			"uniqueItems": true
 		},
 		"addons": {
@@ -46,13 +62,22 @@
 			},
 			"uniqueItems": true
 		},
-		"packageManager": { "enum": ["pnpm", "npm", "bun"] },
+		"packageManager": {
+			"enum": ["pnpm", "npm", "bun"]
+		},
 		"generated": {
 			"description": "Written by tatara new / tatara upgrade: the CLI version and a hash of each framework file it wrote. Used by tatara upgrade.",
 			"type": "object",
 			"properties": {
-				"cli": { "type": "string" },
-				"files": { "type": "object", "additionalProperties": { "type": "string" } }
+				"cli": {
+					"type": "string"
+				},
+				"files": {
+					"type": "object",
+					"additionalProperties": {
+						"type": "string"
+					}
+				}
 			},
 			"required": ["cli", "files"],
 			"additionalProperties": false
@@ -60,7 +85,20 @@
 		"ejected": {
 			"description": "Written by tatara eject: each package copied into src/ejected, with the version it was ejected at. tatara upgrade leaves these alone.",
 			"type": "object",
-			"additionalProperties": { "type": "string" }
+			"additionalProperties": {
+				"type": "string"
+			}
+		},
+		"paths": {
+			"type": "object",
+			"description": "Where the app keeps what a package's commands and seeds import, when it isn't the default: default path \u2192 the app's path, e.g. { \"#core/authz/index\": \"#modules/authorization/index\" }.",
+			"additionalProperties": {
+				"type": "string",
+				"pattern": "^#"
+			},
+			"propertyNames": {
+				"pattern": "^#"
+			}
 		}
 	},
 	"additionalProperties": false

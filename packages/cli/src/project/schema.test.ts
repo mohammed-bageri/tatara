@@ -20,6 +20,7 @@ const every: Required<ProjectConfig> = {
 	packageManager: "pnpm",
 	generated: { cli: "0.0.0", files: {} },
 	ejected: {},
+	paths: {},
 };
 
 it("schema/tatara.json allows every tatara.json field", () => {
