@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/ai",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "tatara AI: one client over Gemini and OpenAI with exhaustion fallback and cooldown, native PDF/image input, JSON mode, embeddings and cost estimates",
 	"type": "module",
 	"license": "MIT",
