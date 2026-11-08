@@ -1,5 +1,0 @@
----
-"@tatara/http": minor
----
-
-`@tatara/http`: `handleErrors` options `translate` (code → localised message, with `codeTranslator(keys, t)`), `mapError` (app mappers that turn SDK / database errors into AppErrors), `codes` (rename codes in responses), `validationStatus` (400 or 422), `exposeErrors`, `redact` and `logger`. `createPagination({ sizeKey, navigation, emptyTotalPages, maxSize })` for the app's own pagination query/meta/schema/response, `success(data, message)`, `errorBody`, `contentDisposition`, `cursorPage(…, { extended: true })` with `extendedCursorMetaSchema`, `createValidationHook({ message: "first-issue", status, detail })` and `validationError`, `rejectCrossSite({ trusted, skip, onRefused })`, `ServiceUnavailableError`, `ValidationError`'s optional status, `uuidSchema` / `isUuid` / `uuidParams` / `idParamSchema`. Behaviour changes: a ZodError thrown from a handler is now a 400 VALIDATION_ERROR (it was a 500), the handler's own NOT_FOUND / INTERNAL_ERROR codes go through `codes`, and an empty error code is left out of the response.
