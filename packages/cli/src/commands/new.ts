@@ -51,6 +51,7 @@ function normalizeAuthFlags(flags: NewFlags): NewFlags {
 const ADDONS = [
 	"authz",
 	"jobs",
+	"events",
 	"cache",
 	"notifications",
 	"realtime",
@@ -169,6 +170,7 @@ async function prompt(name: string, flags: NewFlags): Promise<AppOptions> {
 	const labels: Record<Addon, string> = {
 		authz: "Permission system",
 		jobs: "Jobs + cron (BullMQ)",
+		events: "Domain events (transactional outbox, Postgres + Drizzle)",
 		cache: "Cache (Redis, Postgres or memory)",
 		notifications: "Notifications (in-app, email, SMS, push)",
 		realtime: "Realtime (websockets)",
@@ -186,7 +188,9 @@ async function prompt(name: string, flags: NewFlags): Promise<AppOptions> {
 						message: "Add-ons",
 						required: false,
 						options: ADDONS.filter(
-							(a) => !((a === "authz" || a === "admin") && auth === "none"),
+							(a) =>
+								!((a === "authz" || a === "admin") && auth === "none") &&
+								!(a === "events" && (orm !== "drizzle" || database !== "postgres")),
 						).map((value) => ({ value, label: labels[value] })),
 					}),
 				);

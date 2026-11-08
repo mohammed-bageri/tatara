@@ -3,10 +3,13 @@ import type { AppOptions, Feature } from "../features/types.ts";
 
 export class OptionsError extends Error {}
 
-/** Add-ons others need: notifications deliver through jobs; schedules and realtime tickets use the cache. */
+/**
+ * Add-ons others need: notifications and events deliver through jobs; schedules and realtime
+ * tickets use the cache.
+ */
 function impliedAddons(addons: AppOptions["addons"]): AppOptions["addons"] {
 	const out = new Set(addons);
-	if (out.has("notifications")) out.add("jobs");
+	if (out.has("notifications") || out.has("events")) out.add("jobs");
 	if (out.has("jobs") || out.has("realtime")) out.add("cache");
 	return [...out];
 }
@@ -52,6 +55,9 @@ export function validateOptions(input: AppOptions): AppOptions {
 		}
 		if ((addon === "authz" || addon === "notifications") && !hasDb) {
 			throw new OptionsError(`The ${addon} add-on needs a database.`);
+		}
+		if (addon === "events" && (options.database !== "postgres" || options.orm !== "drizzle")) {
+			throw new OptionsError("The events add-on needs Postgres with Drizzle.");
 		}
 	}
 	return options;
