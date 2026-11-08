@@ -11,3 +11,23 @@ export async function migrateDatabase(url: string): Promise<void> {
 		await pool.end();
 	}
 }
+
+/** The migrations Drizzle recorded in `drizzle.__drizzle_migrations`; none when the table does not exist yet. */
+export async function appliedMigrations(
+	url: string,
+): Promise<{ hash: string; createdAt: number }[]> {
+	const client = new pg.Client({ connectionString: url });
+	await client.connect();
+	try {
+		const exists = await client.query<{ found: boolean }>(
+			"select to_regclass('drizzle.__drizzle_migrations') is not null as found",
+		);
+		if (!exists.rows[0]?.found) return [];
+		const { rows } = await client.query<{ hash: string; created_at: string }>(
+			"select hash, created_at from drizzle.__drizzle_migrations order by created_at",
+		);
+		return rows.map((r) => ({ hash: r.hash, createdAt: Number(r.created_at) }));
+	} finally {
+		await client.end();
+	}
+}

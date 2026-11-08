@@ -1,7 +1,7 @@
 {
 	"name": "@tatara/db",
 	"version": "0.2.2",
-	"description": "tatara database helpers: ids, seeds, per-driver admin and per-ORM migrations",
+	"description": "tatara database helpers: ids, seeds, database errors, per-driver admin, per-ORM migrations, explain and tinker",
 	"type": "module",
 	"license": "MIT",
 	"sideEffects": false,
@@ -37,6 +37,10 @@
 		"./commands": {
 			"types": "./dist/commands.d.mts",
 			"import": "./dist/commands.mjs"
+		},
+		"./tinker": {
+			"types": "./dist/tinker.d.mts",
+			"import": "./dist/tinker.mjs"
 		}
 	},
 	"files": [

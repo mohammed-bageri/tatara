@@ -11,5 +11,6 @@ export default defineConfig(
 		prisma: "src/prisma.ts",
 		"drizzle-postgres": "src/drizzle-postgres.ts",
 		"drizzle-mysql": "src/drizzle-mysql.ts",
+		tinker: "src/tinker.ts",
 	}),
 );
