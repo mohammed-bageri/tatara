@@ -104,6 +104,7 @@ describe("unsubscribe tokens", () => {
 			createdAt: at,
 			updatedAt: at,
 			processedAt: at,
+			claimedUntil: null,
 		});
 		const page = createUnsubscribePage({ tokens, store, suppressions });
 		const token = tokens.sign(jobId!);

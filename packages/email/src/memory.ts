@@ -32,12 +32,24 @@ export function memoryEmailQueueStore(): EmailQueueStore & {
 			jobs.set(id, { ...job, id });
 			return id;
 		},
-		async claimDue(now, limit) {
+		async claimDue(now, limit, leaseUntil) {
+			const expired = (j: EmailJob) =>
+				j.status === "processing" && j.claimedUntil !== null && j.claimedUntil < now;
 			const due = [...jobs.values()]
-				.filter((j) => j.status === "pending" && j.scheduledFor <= now && j.nextAttemptAt <= now)
+				.filter(
+					(j) =>
+						expired(j) ||
+						(j.status === "pending" && j.scheduledFor <= now && j.nextAttemptAt <= now),
+				)
 				.sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime())
 				.slice(0, limit);
-			for (const job of due) Object.assign(job, { status: "processing", updatedAt: now });
+			for (const job of due)
+				Object.assign(job, {
+					attempts: expired(job) ? job.attempts + 1 : job.attempts,
+					status: "processing",
+					claimedUntil: leaseUntil,
+					updatedAt: now,
+				});
 			return due.map((j) => ({ ...j }));
 		},
 		async update(id, patch) {

@@ -44,10 +44,16 @@ await queue.process(); // from a schedule, e.g. every minute
   templates), sends it and logs it. A failure retries after 1m, 5m, 15m, 1h, 4h (`backoffMs`)
   up to `maxAttempts` (5), then the job fails and is logged. A suppressed recipient's job is
   cancelled. A second `process` in the same process while one runs is skipped.
+- A claimed job is the worker's for `leaseMs` (5 minutes; longer than one send can take). If
+  the worker dies mid-send, the job stays "processing" until the lease is over, then the next
+  `process` claims it again, counting the attempt that crashed: never two sends within a lease,
+  and a job that crashes every time fails after `maxAttempts`.
 - Every send carries the job id as a provider variable (`jobIdVariable`, default
   `tatara_job_id`), so a webhook finds the job.
 
-`EmailQueueStore`: `insert`, `claimDue` (atomic: `FOR UPDATE SKIP LOCKED`), `update`,
+`EmailQueueStore`: `insert`, `claimDue(now, limit, leaseUntil)` (atomic, `FOR UPDATE SKIP
+LOCKED`: due pending jobs, plus "processing" ones whose `claimedUntil` has passed, with
+`attempts + 1`; sets `claimedUntil = leaseUntil`), `update`,
 `updateWhere`, `deleteWhere`, `get`, `findByIdempotencyKey`, `log`, `findSent`.
 
 ## Suppressions and unsubscribe

@@ -37,6 +37,8 @@ export interface EmailJob {
 	createdAt: Date;
 	updatedAt: Date;
 	processedAt: Date | null;
+	/** while "processing": the worker's lease; once past, `claimDue` may take the job again */
+	claimedUntil: Date | null;
 }
 
 export type NewEmailJob = Omit<EmailJob, "id">;
@@ -44,7 +46,13 @@ export type NewEmailJob = Omit<EmailJob, "id">;
 export type EmailJobPatch = Partial<
 	Pick<
 		EmailJob,
-		"status" | "attempts" | "lastError" | "nextAttemptAt" | "scheduledFor" | "processedAt"
+		| "status"
+		| "attempts"
+		| "lastError"
+		| "nextAttemptAt"
+		| "scheduledFor"
+		| "processedAt"
+		| "claimedUntil"
 	>
 > & { updatedAt: Date };
 
@@ -79,10 +87,13 @@ export interface EmailQueueStore {
 	/** inserts unless a job has the idempotency key: its id, or null when one already does */
 	insert(job: NewEmailJob, executor?: unknown): Promise<string | null>;
 	/**
-	 * Atomically moves up to `limit` pending jobs due by `now` (scheduledFor and nextAttemptAt)
-	 * to "processing" and returns them; two workers never get the same job (SKIP LOCKED).
+	 * Atomically takes up to `limit` jobs, sets them "processing" with `claimedUntil = leaseUntil`
+	 * and returns them as updated; two workers never get the same job (SKIP LOCKED). It takes
+	 * pending jobs due by `now` (scheduledFor and nextAttemptAt), and "processing" jobs whose
+	 * `claimedUntil` is before `now` (their worker died): for those it adds 1 to `attempts`, the
+	 * attempt that crashed.
 	 */
-	claimDue(now: Date, limit: number): Promise<EmailJob[]>;
+	claimDue(now: Date, limit: number, leaseUntil: Date): Promise<EmailJob[]>;
 	update(id: string, patch: EmailJobPatch): Promise<void>;
 	/** patches the matching jobs whose status is in `from`; how many */
 	updateWhere(
@@ -162,6 +173,11 @@ export interface EmailQueueOptions {
 	/** default "en" */
 	defaultLanguage?: string;
 	logger: CoreLogger;
+	/**
+	 * How long a claimed job is the worker's (default 5 minutes); longer than one send can take.
+	 * A job still "processing" after it, its worker dead, is claimed again.
+	 */
+	leaseMs?: number;
 	now?: () => Date;
 }
 
@@ -184,6 +200,8 @@ export function createEmailQueue(options: EmailQueueOptions) {
 	const now = options.now ?? (() => new Date());
 	const backoff = options.backoffMs?.length ? options.backoffMs : DEFAULT_BACKOFF;
 	const jobIdVariable = options.jobIdVariable ?? DEFAULT_JOB_ID_VARIABLE;
+	const leaseMs = options.leaseMs ?? 5 * MINUTE;
+	if (!(leaseMs > 0)) throw new Error("leaseMs must be positive");
 	let running = false;
 
 	async function insert(input: QueueEmailInput, status: "pending" | "held") {
@@ -213,6 +231,7 @@ export function createEmailQueue(options: EmailQueueOptions) {
 				createdAt: at,
 				updatedAt: at,
 				processedAt: null,
+				claimedUntil: null,
 			},
 			input.executor,
 		);
@@ -223,6 +242,30 @@ export function createEmailQueue(options: EmailQueueOptions) {
 
 	async function send(job: EmailJob): Promise<void> {
 		const at = now();
+		// reclaimed after crashing on its last attempt: never sent, it ends here
+		if (job.attempts >= job.maxAttempts) {
+			const lastError = "lease expired: the worker stopped mid-send";
+			await store.update(job.id, {
+				status: "failed",
+				lastError,
+				updatedAt: at,
+				claimedUntil: null,
+			});
+			await store.log({
+				orgId: job.orgId,
+				jobId: job.id,
+				templateKey: job.templateKey,
+				recipient: job.recipient,
+				subject: job.subjectOverride || job.templateKey,
+				status: "failed",
+				providerMessageId: null,
+				variablesHash: hashVariables(job.variables),
+				errorMessage: lastError,
+				sentAt: at,
+			});
+			logger.error({ jobId: job.id, attempts: job.attempts }, "email failed for good");
+			throw new Error(lastError);
+		}
 		try {
 			const reason = await options.suppressions?.reason(job.orgId, job.recipient);
 			if (reason) {
@@ -231,6 +274,7 @@ export function createEmailQueue(options: EmailQueueOptions) {
 					lastError: `suppressed: ${reason}`,
 					processedAt: at,
 					updatedAt: at,
+					claimedUntil: null,
 				});
 				return;
 			}
@@ -267,6 +311,7 @@ export function createEmailQueue(options: EmailQueueOptions) {
 				attempts: job.attempts + 1,
 				processedAt: at,
 				updatedAt: at,
+				claimedUntil: null,
 			});
 			await store.log({
 				orgId: job.orgId,
@@ -290,6 +335,7 @@ export function createEmailQueue(options: EmailQueueOptions) {
 					lastError: message,
 					attempts,
 					updatedAt: at,
+					claimedUntil: null,
 				});
 				await store.log({
 					orgId: job.orgId,
@@ -312,6 +358,7 @@ export function createEmailQueue(options: EmailQueueOptions) {
 					attempts,
 					nextAttemptAt: new Date(at.getTime() + delay),
 					updatedAt: at,
+					claimedUntil: null,
 				});
 				logger.warn({ jobId: job.id, attempts, err: message }, "email failed, will retry");
 			}
@@ -362,7 +409,8 @@ export function createEmailQueue(options: EmailQueueOptions) {
 			if (running) return { processed: 0, failed: 0, skipped: true };
 			running = true;
 			try {
-				const jobs = await store.claimDue(now(), input.limit ?? 50);
+				const at = now();
+				const jobs = await store.claimDue(at, input.limit ?? 50, new Date(at.getTime() + leaseMs));
 				let processed = 0;
 				let failed = 0;
 				for (const job of jobs) {

@@ -236,6 +236,76 @@ describe("the email queue", () => {
 	});
 });
 
+describe("leases", () => {
+	const MIN = 60_000;
+	const store = () => memoryEmailQueueStore();
+	type Store = ReturnType<typeof store>;
+	// one worker process; `dies` makes its send hang forever, like a process killed mid-send
+	function worker(s: Store, at: string, opts: { dies?: boolean; maxAttempts?: number } = {}) {
+		const send = vi.fn(
+			(): Promise<{ id: string | null }> =>
+				opts.dies ? new Promise(() => {}) : Promise.resolve({ id: "<ok>" }),
+		);
+		const queue = createEmailQueue({
+			store: s,
+			mailer: { send },
+			render: () => ({ subject: "s", text: "t" }),
+			leaseMs: 5 * MIN,
+			...(opts.maxAttempts ? { maxAttempts: opts.maxAttempts } : {}),
+			logger,
+			now: () => new Date(at),
+		});
+		return { queue, send };
+	}
+	async function dieMidSend(s: Store, at: string) {
+		const w = worker(s, at, { dies: true });
+		void w.queue.process();
+		await vi.waitFor(() => expect(w.send).toHaveBeenCalledTimes(1));
+	}
+
+	it("reclaims a job whose worker died once the lease is over, counting the attempt", async () => {
+		const s = store();
+		await worker(s, "2026-01-01T10:00:00Z").queue.enqueue(input());
+		await dieMidSend(s, "2026-01-01T10:00:00Z");
+		const [job] = [...s.jobs.values()];
+		expect(job).toMatchObject({ status: "processing", attempts: 0 });
+		expect(job?.claimedUntil?.toISOString()).toBe("2026-01-01T10:05:00.000Z");
+
+		const early = worker(s, "2026-01-01T10:04:59Z");
+		expect(await early.queue.process()).toEqual({ processed: 0, failed: 0 });
+		expect(early.send).not.toHaveBeenCalled();
+
+		const late = worker(s, "2026-01-01T10:05:01Z");
+		expect(await late.queue.process()).toEqual({ processed: 1, failed: 0 });
+		expect(late.send).toHaveBeenCalledTimes(1);
+		expect(s.jobs.get(job!.id)).toMatchObject({ status: "sent", attempts: 2, claimedUntil: null });
+	});
+
+	it("fails a job for good after maxAttempts crashes, without sending it again", async () => {
+		const s = store();
+		await worker(s, "2026-01-01T10:00:00Z", { maxAttempts: 3 }).queue.enqueue(input());
+		await dieMidSend(s, "2026-01-01T10:00:00Z");
+		await dieMidSend(s, "2026-01-01T10:06:00Z");
+		await dieMidSend(s, "2026-01-01T10:12:00Z");
+		const last = worker(s, "2026-01-01T10:18:00Z");
+		expect(await last.queue.process()).toEqual({ processed: 0, failed: 1 });
+		expect(last.send).not.toHaveBeenCalled();
+		expect([...s.jobs.values()][0]).toMatchObject({
+			status: "failed",
+			attempts: 3,
+			claimedUntil: null,
+		});
+		expect(s.sendLog).toMatchObject([
+			{ status: "failed", errorMessage: expect.stringMatching(/lease expired/) },
+		]);
+		expect(await last.queue.process()).toEqual({ processed: 0, failed: 0 });
+	});
+
+	it("refuses a lease that isn't positive", () => {
+		expect(() => setup({ leaseMs: 0 })).toThrow(/leaseMs/);
+	});
+});
+
 describe("definitionRenderer", () => {
 	const welcome = defineEmail({
 		name: "users.welcome",
