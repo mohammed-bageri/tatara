@@ -24,8 +24,17 @@ export class AppError extends Error {
 }
 
 export class ValidationError extends AppError {
-	constructor(message?: string, details?: unknown) {
-		super(400, "VALIDATION_ERROR", message ?? "Invalid request", details, message === undefined);
+	/** false when no status was passed, so `handleErrors({ validationStatus })` may choose it */
+	readonly explicitStatus: boolean;
+	constructor(message?: string, details?: unknown, status?: 400 | 422) {
+		super(
+			status ?? 400,
+			"VALIDATION_ERROR",
+			message ?? "Invalid request",
+			details,
+			message === undefined,
+		);
+		this.explicitStatus = status !== undefined;
 	}
 }
 
@@ -90,5 +99,12 @@ export class TooManyRequestsError extends AppError {
 export class RequestTimeoutError extends AppError {
 	constructor() {
 		super(504, "REQUEST_TIMEOUT", "The request took too long", undefined, true);
+	}
+}
+
+/** 503: a dependency (queue, broker, provider) is unavailable; the request may be retried. */
+export class ServiceUnavailableError extends AppError {
+	constructor(message?: string, code = "SERVICE_UNAVAILABLE") {
+		super(503, code, message ?? "Service unavailable", undefined, message === undefined);
 	}
 }

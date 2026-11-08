@@ -12,8 +12,26 @@ export const cursorMetaSchema = z
 	.object({ nextCursor: z.string().nullable() })
 	.openapi("CursorMeta");
 
-export function cursorPageSchema<T extends z.ZodType>(item: T) {
-	return z.object({ success: z.literal(true), data: z.array(item), meta: cursorMetaSchema });
+/** The cursor meta with `limit` and `hasNext` too, for `cursorPage(…, { extended: true })`. */
+export const extendedCursorMetaSchema = z
+	.object({ limit: z.number().int(), nextCursor: z.string().nullable(), hasNext: z.boolean() })
+	.openapi("ExtendedCursorMeta");
+
+export function cursorPageSchema<T extends z.ZodType>(
+	item: T,
+	options: { extended: true },
+): ReturnType<typeof cursorSchema<T, typeof extendedCursorMetaSchema>>;
+export function cursorPageSchema<T extends z.ZodType>(
+	item: T,
+): ReturnType<typeof cursorSchema<T, typeof cursorMetaSchema>>;
+export function cursorPageSchema<T extends z.ZodType>(item: T, options?: { extended?: boolean }) {
+	return options?.extended
+		? cursorSchema(item, extendedCursorMetaSchema)
+		: cursorSchema(item, cursorMetaSchema);
+}
+
+function cursorSchema<T extends z.ZodType, M extends z.ZodType>(item: T, meta: M) {
+	return z.object({ success: z.literal(true), data: z.array(item), meta });
 }
 
 /** An opaque cursor: base64url JSON of where the next page starts (e.g. `{ createdAt, id }`). */
@@ -32,12 +50,34 @@ export function decodeCursor<T extends z.ZodType>(schema: T, cursor: string): z.
 
 /**
  * One page from rows fetched with `limit + 1`: the extra row only says there's another page.
- * `positionOf` gives the cursor position of the last row on this page.
+ * `positionOf` gives the cursor position of the last row on this page; `{ extended: true }`
+ * adds `limit` and `hasNext` to the meta.
  */
-export function cursorPage<T>(rows: T[], limit: number, positionOf: (row: T) => unknown) {
+export function cursorPage<T>(
+	rows: T[],
+	limit: number,
+	positionOf: (row: T) => unknown,
+	options: { extended: true },
+): {
+	success: true;
+	data: T[];
+	meta: { limit: number; nextCursor: string | null; hasNext: boolean };
+};
+export function cursorPage<T>(
+	rows: T[],
+	limit: number,
+	positionOf: (row: T) => unknown,
+): { success: true; data: T[]; meta: { nextCursor: string | null } };
+export function cursorPage<T>(
+	rows: T[],
+	limit: number,
+	positionOf: (row: T) => unknown,
+	options?: { extended?: boolean },
+) {
 	const data = rows.slice(0, limit);
 	const last = data.at(-1);
-	const nextCursor =
-		rows.length > limit && last !== undefined ? encodeCursor(positionOf(last)) : null;
-	return { success: true as const, data, meta: { nextCursor } };
+	const hasNext = rows.length > limit && last !== undefined;
+	const nextCursor = hasNext ? encodeCursor(positionOf(last)) : null;
+	const meta = options?.extended ? { limit, nextCursor, hasNext } : { nextCursor };
+	return { success: true as const, data, meta };
 }

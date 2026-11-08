@@ -7,9 +7,10 @@ import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
-import { AppError, TooManyRequestsError } from "./errors.ts";
+import { AppError, TooManyRequestsError, ValidationError } from "./errors.ts";
+import { errorBody } from "./response.ts";
 import { requestTimeout, type TimeoutOptions } from "./timeout.ts";
-import { validationHook } from "./validation.ts";
+import { type IssueLike, validationError, validationHook } from "./validation.ts";
 
 /** Variables every tatara app has; apps extend them with their own (principal, language, …). */
 export interface HttpEnv {
@@ -160,39 +161,103 @@ export function serveOpenApi<E extends HttpEnv>(
 	app.get("/docs", Scalar({ url: "/openapi.json", pageTitle: options.title }));
 }
 
+/** Turns an error the handler does not know (an SDK's, the database's) into an AppError, or passes. */
+export type ErrorMapper<E extends HttpEnv = HttpEnv> = (
+	err: unknown,
+	c: Context<E>,
+) => AppError | undefined;
+
+export interface HandleErrorsOptions<E extends HttpEnv> {
+	/** the message for an AppError; overrides `translate` for AppErrors */
+	message?: (err: AppError, c: Context<E>) => string;
+	/**
+	 * The localised message for an error code, or undefined to keep the error's own. Used for
+	 * translatable AppErrors and for the handler's own errors (NOT_FOUND, INTERNAL_ERROR).
+	 * `codeTranslator(keys, t)` builds one from a code → i18n key map.
+	 */
+	translate?: (code: string, c: Context<E>) => string | undefined;
+	/** tried in order before the built-in handling; the first AppError returned is answered */
+	mapError?: readonly ErrorMapper<E>[];
+	/** codes renamed in responses (and before `translate`), e.g. `{ RATE_LIMITED: "RATE_LIMIT_EXCEEDED" }` */
+	codes?: Record<string, string>;
+	/** the status for ValidationErrors without an explicit one and for thrown ZodErrors (default 400) */
+	validationStatus?: 400 | 422;
+	/** put unhandled errors' message, name and stack in the response: development only */
+	exposeErrors?: boolean;
+	/** applied to an unhandled error before it is logged or exposed, e.g. `redactDbQueryErrors` from @tatara/db */
+	redact?: (err: unknown) => unknown;
+	/** used when the request has no `c.var.logger` */
+	logger?: CoreLogger;
+}
+
+/** A `translate` for `handleErrors` from a code → i18n key map. */
+export function codeTranslator<E extends HttpEnv>(
+	keys: Record<string, string>,
+	t: (key: string, c: Context<E>) => string,
+): (code: string, c: Context<E>) => string | undefined {
+	return (code, c) => {
+		const key = keys[code];
+		return key === undefined ? undefined : t(key, c);
+	};
+}
+
+function isZodError(err: unknown): err is Error & { issues: IssueLike[] } {
+	return (
+		err instanceof Error &&
+		err.name === "ZodError" &&
+		Array.isArray((err as { issues?: unknown }).issues)
+	);
+}
+
 /** The error envelope for every error, plus a 404 for unknown routes. */
 export function handleErrors<E extends HttpEnv>(
 	app: OpenAPIHono<E>,
-	options: { message?: (err: AppError, c: Context<E>) => string } = {},
+	options: HandleErrorsOptions<E> = {},
 ): void {
-	app.onError((err, c) => {
+	const rename = (code: string) => options.codes?.[code] ?? code;
+	app.onError((thrown, ctx) => {
+		const c = ctx as Context<E>;
+		let err: unknown = thrown;
+		for (const mapper of options.mapError ?? []) {
+			const mapped = mapper(thrown, c);
+			if (mapped) {
+				err = mapped;
+				break;
+			}
+		}
+		if (!(err instanceof AppError) && isZodError(err)) err = validationError(err.issues);
 		if (err instanceof AppError) {
 			if (err instanceof TooManyRequestsError)
 				c.header("Retry-After", String(err.retryAfterSeconds));
-			const message = options.message ? options.message(err, c as Context<E>) : err.message;
-			return c.json(
-				{
-					success: false as const,
-					error: message,
-					code: err.code,
-					...(err.details === undefined ? {} : { details: err.details }),
-				},
-				err.status,
-			);
+			const code = rename(err.code);
+			const message = options.message
+				? options.message(err, c)
+				: ((err.translatable ? options.translate?.(code, c) : undefined) ?? err.message);
+			const status =
+				err instanceof ValidationError && !err.explicitStatus && options.validationStatus
+					? options.validationStatus
+					: err.status;
+			return c.json(errorBody(code, message, err.details), status);
 		}
 		if (err instanceof HTTPException) {
-			return c.json(
-				{ success: false as const, error: err.message || "Request failed", code: "HTTP_ERROR" },
-				err.status,
-			);
+			return c.json(errorBody("HTTP_ERROR", err.message || "Request failed"), err.status);
 		}
-		(c.get("logger") as CoreLogger).error({ err }, "unhandled error");
-		return c.json(
-			{ success: false as const, error: "Something went wrong", code: "INTERNAL_ERROR" },
-			500,
+		const logged = options.redact ? options.redact(err) : err;
+		((c.get("logger") as CoreLogger | undefined) ?? options.logger)?.error(
+			{ err: logged },
+			"unhandled error",
 		);
+		const code = rename("INTERNAL_ERROR");
+		const generic = options.translate?.(code, c) ?? "Something went wrong";
+		if (options.exposeErrors && logged instanceof Error) {
+			const details = { name: logged.name, message: logged.message, stack: logged.stack };
+			return c.json(errorBody(code, logged.message || generic, details), 500);
+		}
+		return c.json(errorBody(code, generic), 500);
 	});
-	app.notFound((c) =>
-		c.json({ success: false as const, error: "Route not found", code: "NOT_FOUND" }, 404),
-	);
+	app.notFound((ctx) => {
+		const c = ctx as Context<E>;
+		const code = rename("NOT_FOUND");
+		return c.json(errorBody(code, options.translate?.(code, c) ?? "Route not found"), 404);
+	});
 }
