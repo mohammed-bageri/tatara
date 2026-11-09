@@ -69,7 +69,6 @@ function interpolate(text: string, vars: TranslateVars): string {
 
 export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I18nOptions) {
 	const languages = Object.keys(dictionaries);
-	const supported = new Set(languages);
 	const storage = new AsyncLocalStorage<string>();
 	const pluralRules = new Map<string, Intl.PluralRules>();
 	const queryKey = detection.query ?? "lang";
@@ -84,30 +83,49 @@ export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I1
 		return rules.select(count);
 	}
 
-	/** `language` when it is supported, otherwise the default language. */
-	function resolveLanguage(language: string | null | undefined): string {
-		return language && supported.has(language) ? language : defaultLanguage;
+	/** The supported language a code names, ignoring case and region ("AR", "ar-SA" → "ar"). */
+	function supportedLanguage(code: string | null | undefined): string | undefined {
+		const tag = code?.trim().toLowerCase();
+		if (!tag) return undefined;
+		return (
+			languages.find((l) => l.toLowerCase() === tag) ??
+			languages.find((l) => l.toLowerCase() === tag.split("-")[0])
+		);
 	}
 
-	function find(language: string, key: string, count: unknown): string | undefined {
+	/** `language` when it is supported (any case or region), otherwise the default language. */
+	function resolveLanguage(language: string | null | undefined): string {
+		return supportedLanguage(language) ?? defaultLanguage;
+	}
+
+	function find(
+		language: string,
+		key: string,
+		count: unknown,
+		context?: unknown,
+	): string | undefined {
+		// a context ("male", "weekly") tries `key_<context>` before `key`
+		const bases = typeof context === "string" && context ? [`${key}_${context}`, key] : [key];
 		for (const lang of language === defaultLanguage ? [language] : [language, defaultLanguage]) {
 			const dict = dictionaries[lang];
-			if (typeof count === "number") {
-				const forms = count === 0 ? ["zero", plural(lang, count)] : [plural(lang, count)];
-				for (const form of forms) {
-					const text = lookup(dict, `${key}_${form}`);
-					if (typeof text === "string") return text;
+			for (const base of bases) {
+				if (typeof count === "number") {
+					const forms = count === 0 ? ["zero", plural(lang, count)] : [plural(lang, count)];
+					for (const form of forms) {
+						const text = lookup(dict, `${base}_${form}`);
+						if (typeof text === "string") return text;
+					}
 				}
+				const text = lookup(dict, base);
+				if (typeof text === "string") return text;
 			}
-			const text = lookup(dict, key);
-			if (typeof text === "string") return text;
 		}
 		return undefined;
 	}
 
 	/** Translates `key` ("errors.NOT_FOUND" or "errors:NOT_FOUND"), falling back to the default language, then `fallback`. */
 	function t(language: string, key: string, fallback = key, vars: TranslateVars = {}): string {
-		return interpolate(find(language, key, vars.count) ?? fallback, vars);
+		return interpolate(find(language, key, vars.count, vars.context) ?? fallback, vars);
 	}
 
 	/** A translator for one language (unsupported → default); missing keys give `defaultValue`, else the key. */
@@ -155,8 +173,8 @@ export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I1
 			.filter((entry) => entry.tag && entry.q > 0)
 			.sort((a, b) => b.q - a.q || a.index - b.index);
 		for (const { tag } of ranked) {
-			const match = languages.find((l) => l.toLowerCase() === tag) ?? tag.split("-")[0];
-			if (match && supported.has(match)) return match;
+			const match = supportedLanguage(tag);
+			if (match) return match;
 		}
 		return undefined;
 	}
@@ -168,8 +186,7 @@ export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I1
 	}
 
 	function explicitQuery(c: Context): string | undefined {
-		const value = queryKey ? c.req.query(queryKey) : undefined;
-		return value && supported.has(value) ? value : undefined;
+		return supportedLanguage(queryKey ? c.req.query(queryKey) : undefined);
 	}
 
 	/** ?lang, then the `lang` cookie, then Accept-Language; sets `c.var.language` and `currentLanguage()`. */
@@ -177,7 +194,7 @@ export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I1
 		const fromCookie = cookieName ? getCookie(c, cookieName) : undefined;
 		const language =
 			explicitQuery(c) ??
-			(fromCookie && supported.has(fromCookie) ? fromCookie : undefined) ??
+			supportedLanguage(fromCookie) ??
 			(detection.header === false ? undefined : accepted(c.req.header("accept-language") ?? "")) ??
 			defaultLanguage;
 		if (detection.persist && cookieName && fromCookie !== language)
@@ -196,8 +213,8 @@ export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I1
 	): MiddlewareHandler<Env> {
 		return async (c, next) => {
 			if (explicitQuery(c)) return next();
-			const language = await preferred(c);
-			if (!language || !supported.has(language)) return next();
+			const language = supportedLanguage(await preferred(c));
+			if (!language) return next();
 			await apply(c, language, next);
 		};
 	}

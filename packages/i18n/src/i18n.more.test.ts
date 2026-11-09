@@ -174,3 +174,40 @@ describe("withEnumLabels", () => {
 		]);
 	});
 });
+
+describe("context and language codes", () => {
+	const app18n = createI18n({
+		dictionaries: {
+			en: {
+				common: {
+					trigger: "On the date",
+					trigger_weekly: "Every week",
+					trigger_weekly_other: "Every {{count}} weeks",
+				},
+			},
+			ar: { common: { trigger: "في التاريخ" } },
+		},
+		defaultLanguage: "en",
+		detection: { query: "lang", cookie: "language" },
+	});
+
+	it("tries key_<context> before key, plural forms first", () => {
+		const t = app18n.translator("en");
+		expect(t("common.trigger", { context: "weekly" })).toBe("Every week");
+		expect(t("common.trigger", { context: "weekly", count: 3 })).toBe("Every 3 weeks");
+		expect(t("common.trigger", { context: "monthly" })).toBe("On the date");
+		expect(t("common.trigger")).toBe("On the date");
+	});
+
+	it("matches a language code in any case, and a region to its base language", async () => {
+		const app = new Hono<{ Variables: { language: string } }>();
+		app.use(app18n.detectLanguage);
+		app.get("/", (c) => c.text(c.get("language")));
+		const lang = async (init: RequestInit, path = "/") => (await app.request(path, init)).text();
+		expect(await lang({}, "/?lang=AR")).toBe("ar");
+		expect(await lang({}, "/?lang=ar-SA")).toBe("ar");
+		expect(await lang({ headers: { cookie: "language=AR" } })).toBe("ar");
+		expect(await lang({}, "/?lang=fr")).toBe("en");
+		expect(app18n.translator("AR")("common.trigger")).toBe("في التاريخ");
+	});
+});
