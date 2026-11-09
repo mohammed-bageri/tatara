@@ -200,9 +200,9 @@ describe("context and language codes", () => {
 	});
 
 	it("matches a language code in any case, and a region to its base language", async () => {
-		const app = new Hono();
+		const app = new Hono<{ Variables: { language: string } }>();
 		app.use(app18n.detectLanguage);
-		app.get("/", (c) => c.text(c.get("language" as never)));
+		app.get("/", (c) => c.text(c.get("language")));
 		const lang = async (init: RequestInit, path = "/") => (await app.request(path, init)).text();
 		expect(await lang({}, "/?lang=AR")).toBe("ar");
 		expect(await lang({}, "/?lang=ar-SA")).toBe("ar");
