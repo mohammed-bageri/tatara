@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/email",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "tatara email: SMTP or console mailer",
 	"type": "module",
 	"license": "MIT",
@@ -29,7 +29,7 @@
 	},
 	"peerDependencies": {
 		"nodemailer": "^10.1.1",
-		"@tatara/core": "^0.1.2",
+		"@tatara/core": "^0.2.0",
 		"zod": "^4.6.7"
 	},
 	"devDependencies": {

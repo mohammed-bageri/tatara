@@ -1,5 +1,20 @@
 # @tatara/auth
 
+## 0.3.0
+
+### Minor Changes
+
+- 22e28a7: `createAuthInstance` options `clientIp` (`{ resolve, header?, unresolved? }`: better-auth's rate limits and session IPs key on the address the app resolved, set by the new `handleRequest(c)`) and `onUnauthorized`; it also returns `attachSession` (`c.var.session` / `c.var.user`) and `requireSession` (401 without a user or while an admin-plugin ban holds). New exports `isBannedNow`, `withClientIpHeader`, `SessionEnv`, `ClientIpOptions`.
+  
+  `sessionPrincipal` (so `attachPrincipal`, `requireAuth()` and `requireOrg()`) no longer gives a principal to a user whose admin-plugin ban is in force.
+
+### Patch Changes
+
+- Updated dependencies [1882c35]
+- Updated dependencies [1882c35]
+  - @tatara/core@0.2.0
+  - @tatara/http@0.3.0
+
 ## 0.2.2
 
 ### Patch Changes

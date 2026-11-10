@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/realtime",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "tatara realtime: socket.io with ticket auth, user and org rooms, module channels and cross-process publishing",
 	"type": "module",
 	"license": "MIT",
@@ -28,7 +28,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"peerDependencies": {
-		"@tatara/core": "^0.1.2",
+		"@tatara/core": "^0.2.0",
 		"socket.io": "^4.8.4",
 		"@socket.io/redis-adapter": "^8.3.0",
 		"@socket.io/redis-emitter": "^5.1.0",
