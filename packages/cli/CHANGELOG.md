@@ -1,5 +1,11 @@
 # @tatara/cli
 
+## 0.19.2
+
+### Patch Changes
+
+- 2203ad7: `tatara sync` removes files in src/generated that an earlier sync wrote and nothing produces any more (only files with the sync header).
+
 ## 0.19.1
 
 ### Patch Changes
