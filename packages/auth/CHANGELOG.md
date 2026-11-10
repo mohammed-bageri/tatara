@@ -1,5 +1,11 @@
 # @tatara/auth
 
+## 0.5.0
+
+### Minor Changes
+
+- 617cd51: A session principal's `claims` hold the session user (email, name, the app's additional user fields), so routes read them without another query.
+
 ## 0.4.0
 
 ### Minor Changes
