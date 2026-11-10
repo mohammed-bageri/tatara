@@ -44,6 +44,9 @@ export function createLifecycle(options: LifecycleOptions = {}) {
 		}
 	}
 
+	let hookFailed = false;
+
+	/** Runs every hook (last registered first); exits 1 if any hook failed, else `code`. */
 	async function shutdown(code = 0, logger?: CoreLogger): Promise<void> {
 		if (!shuttingDown) {
 			shuttingDown = true;
@@ -52,11 +55,13 @@ export function createLifecycle(options: LifecycleOptions = {}) {
 				try {
 					await hook.run();
 				} catch (error) {
+					hookFailed = true;
 					logger?.error({ err: error, hook: hook.name }, "shutdown hook failed");
 				}
 			}
 		}
-		exit(code);
+		// a failed cleanup must not look like a clean exit to the process supervisor
+		exit(hookFailed ? 1 : code);
 	}
 
 	function handleSignals(logger: CoreLogger): void {

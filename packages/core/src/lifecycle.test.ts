@@ -69,6 +69,17 @@ describe("lifecycle", () => {
 		expect(JSON.stringify(logger.info.mock.calls)).toContain("gave up");
 	});
 
+	it("exits 1 when a hook failed, even for a signal's clean shutdown", async () => {
+		const exit = vi.fn();
+		const life = createLifecycle({ exit });
+		life.onShutdown("db", () => {
+			throw new Error("pool did not close");
+		});
+		life.onShutdown("http", () => {});
+		await life.shutdown(0, silent);
+		expect(exit).toHaveBeenCalledWith(1);
+	});
+
 	it("exits with the given code", async () => {
 		const exit = vi.fn();
 		await createLifecycle({ exit }).shutdown(3, silent);
