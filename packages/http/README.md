@@ -38,6 +38,8 @@ ZodError is answered as a ValidationError.
   `meta` and `offset` in the app's shape (`{ page, limit, total, totalPages, hasNext, hasPrev }`).
   `createPagination()` is the default `page` / `pageSize` shape.
 - `cursorPage(rows, limit, positionOf, { extended: true })` adds `limit` and `hasNext` to the meta.
+- `decodeCursor(schema, cursor)` answers 400 INVALID_CURSOR for a bad cursor; `tryDecodeCursor` gives
+  null instead, for lists that start over from the first page.
 - `contentDisposition(fileName, "attachment")` for any file name, Unicode included.
 
 ## Validation and middleware

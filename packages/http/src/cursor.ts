@@ -41,10 +41,19 @@ export function encodeCursor(position: unknown): string {
 
 /** The position in `cursor`, checked against `schema`; a 400 INVALID_CURSOR when it doesn't parse. */
 export function decodeCursor<T extends z.ZodType>(schema: T, cursor: string): z.infer<T> {
-	try {
-		return schema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")));
-	} catch {
+	const position = tryDecodeCursor(schema, cursor);
+	if (position === null)
 		throw new AppError(400, "INVALID_CURSOR", "Invalid cursor", undefined, true);
+	return position;
+}
+
+/** Like `decodeCursor`, but null for a cursor that doesn't parse, for lists that start over. */
+export function tryDecodeCursor<T extends z.ZodType>(schema: T, cursor: string): z.infer<T> | null {
+	try {
+		const parsed = schema.safeParse(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")));
+		return parsed.success ? parsed.data : null;
+	} catch {
+		return null;
 	}
 }
 
