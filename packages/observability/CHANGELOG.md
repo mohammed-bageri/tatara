@@ -1,5 +1,11 @@
 # @tatara/observability
 
+## 0.4.0
+
+### Minor Changes
+
+- 266cc1f: `startTelemetry({ redactPath })` hides path secrets from span names and attributes (`RedactingSpanProcessor`); an endpoint given with its `/v1/traces` path works too.
+
 ## 0.3.2
 
 ### Patch Changes
