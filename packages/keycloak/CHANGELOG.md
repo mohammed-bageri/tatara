@@ -1,5 +1,14 @@
 # @tatara/keycloak
 
+## 0.1.4
+
+### Patch Changes
+
+- 9b9ac7f: The repository moved to github.com/mohammed-bageri/tatara (was tatara-cli); package metadata and docs point there.
+- Updated dependencies [9b9ac7f]
+  - @tatara/auth@0.3.1
+  - @tatara/core@0.2.1
+
 ## 0.1.3
 
 ### Patch Changes

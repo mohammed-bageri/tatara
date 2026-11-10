@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/i18n",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "tatara i18n: dictionaries, t(), plurals, language detection for Hono and localised zod messages",
 	"type": "module",
 	"license": "MIT",
