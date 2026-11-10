@@ -29,6 +29,26 @@ export interface ProjectConfig {
 	 * `{ "#core/authz/index": "#modules/authorization/index" }` (default path → the app's path).
 	 */
 	paths?: Record<string, string>;
+	/** App-declared discovery kinds `tatara sync` lists into src/generated/<name>.ts */
+	registries?: RegistryKind[];
+}
+
+/** One app-declared discovery kind: the files `glob` matches, as one typed list. */
+export interface RegistryKind {
+	/** identifier: the file is src/generated/<name>.ts and exports `const <name>` */
+	name: string;
+	/** globs from the app root (tinyglobby); tests and .d.ts files are skipped */
+	glob: string | string[];
+	/** what each file contributes: "default" (default), "*" (the module namespace) or a named export */
+	export?: string;
+	/** "item" (default): one T per file; "array": a T[] per file, spread into the list; "record": a Record<string, T> per file */
+	each?: "item" | "array" | "record";
+	/** T; `import` is left out for global types such as `string` */
+	type?: { import?: string; name: string };
+	/** "list" (default): the values; "entries": `{ owner, file, value }`, owner "module:<name>" or "core:<name>" */
+	shape?: "list" | "entries";
+	/** a field every item must not share with another; checked when the generated module loads */
+	unique?: string;
 }
 
 export class NotATataraProject extends Error {

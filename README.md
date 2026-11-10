@@ -18,7 +18,8 @@ the generators, pinned per project.
   reference at `/docs`.
 - **Modules with auto-discovery**: drop a file in `src/modules/<module>/routes/*.routes.ts`
   (or `commands/`, `consumers/`, `schedules/`, `permissions/`, `db/`) and it is wired in.
-  No central list to edit, so generators only ever add files.
+  No central list to edit, so generators only ever add files. An app adds its own kinds with
+  tatara.json `registries` (below).
 - **One command for local dev**: `pnpm dev` starts the containers the app needs, migrates, seeds
   and runs every process with reload.
 - **`verify` as definition of done**: lint (Biome) + layout rules + typecheck + tests + build.
@@ -55,6 +56,30 @@ pnpm tatara upgrade                                  # after bumping @tatara/cli
 pnpm tatara eject <package> [--with-dependents]     # copy a @tatara/* package into src/ejected and own it
 pnpm tatara tinker                                   # REPL with db and services loaded
 ```
+
+### App-declared registries
+
+`tatara sync` also lists the app's own discovery kinds. Each `registries` entry becomes
+`src/generated/<name>.ts`, imported as `#generated/<name>`:
+
+```jsonc
+"registries": [
+	{
+		"name": "approvalSubjects",                          // export const approvalSubjects
+		"glob": "src/modules/*/approval-subjects/*.ts",      // string or array; tests and .d.ts skipped
+		"export": "subject",                                 // "default" (default), "*" (namespace) or a named export
+		"type": { "import": "#modules/approvals/subjects", "name": "ApprovalSubject" },
+		"unique": "subjectType"                              // throws on load when two items share it
+	},
+	// each: "array" spreads every file's T[] into one list; "record" lists Record<string, T> maps
+	{ "name": "automationNodes", "glob": "src/modules/*/automation-nodes/*.ts", "export": "nodes", "each": "array" },
+	// shape: "entries" lists { owner: "module:<name>" | "core:<name>", file, value }
+	{ "name": "workItemSources", "glob": "src/modules/*/work-item-sources/index.ts", "export": "workItemSources", "each": "array", "shape": "entries" }
+]
+```
+
+Files are ordered core before modules, then by path. Without `type`, the list keeps the exports'
+inferred types.
 
 ## Repository
 
