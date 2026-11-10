@@ -1,5 +1,12 @@
 # @tatara/auth
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [60bffa9]
+  - @tatara/http@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes
