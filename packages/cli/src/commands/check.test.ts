@@ -43,6 +43,15 @@ describe("check: module boundaries", () => {
 		).toEqual([]);
 	});
 
+	it("lets a module subscribe to another's domain events", async () => {
+		expect(
+			await rules({
+				"src/modules/billing/event-subscribers/user-created.ts":
+					'import { userCreated } from "#modules/users/events/user";\n',
+			}),
+		).toEqual([]);
+	});
+
 	it("refuses another module's other folders", async () => {
 		expect(
 			await rules({

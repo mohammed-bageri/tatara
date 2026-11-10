@@ -71,6 +71,46 @@ describe("sync: commands from packages", () => {
 		expect(text).toContain("fromPackages.filter((c) => !own.some((o) => o.name === c.name))");
 	});
 
+	it("passes an optional argument only when the app module exports it", async () => {
+		const withStatus = (migrate: string) => {
+			const root = app({ "src/core/db/migrate.ts": migrate });
+			writeFileSync(
+				join(root, "node_modules/@tatara/db/package.json"),
+				manifest("db", {
+					commands: [
+						{
+							import: "@tatara/db/commands",
+							factory: "dbCommands",
+							args: { env: "#core/config/env", migrationStatus: "#core/db/migrate" },
+							optional: ["migrationStatus"],
+						},
+					],
+				}),
+			);
+			return root;
+		};
+		const scaffolded = withStatus(
+			'export { migrateDatabase, migrationStatus } from "@tatara/db/drizzle-postgres";\n',
+		);
+		await sync(loadProject(scaffolded));
+		const text = generated(scaffolded, "commands.ts");
+		expect(text).toContain('import { migrationStatus } from "#core/db/migrate";');
+		expect(text).toContain("...dbCommands({ env, migrationStatus })");
+
+		const declared = withStatus("export async function migrationStatus() {}\n");
+		await sync(loadProject(declared));
+		expect(generated(declared, "commands.ts")).toContain("...dbCommands({ env, migrationStatus })");
+
+		// prisma's migrate.ts has no migrationStatus; a comment or type mentioning it doesn't count
+		const without = withStatus(
+			'// migrationStatus: none\nexport { migrateDatabase } from "@tatara/db/prisma";\nexport type { migrationStatus } from "x";\n',
+		);
+		await sync(loadProject(without));
+		const plain = generated(without, "commands.ts");
+		expect(plain).toContain("...dbCommands({ env })");
+		expect(plain).not.toContain("migrationStatus");
+	});
+
 	it('imports a package\'s argument from where tatara.json "paths" says the app keeps it', async () => {
 		const root = app({});
 		const config = JSON.parse(readFileSync(join(root, "tatara.json"), "utf8"));

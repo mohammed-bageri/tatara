@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import mysql from "mysql2/promise";
+import { drizzleMigrationStatus, type MigrationStatusReport } from "./migration-status.ts";
 
 /** Applies ./drizzle migrations to the database at `url`. */
 export async function migrateDatabase(url: string): Promise<void> {
@@ -32,4 +33,9 @@ export async function appliedMigrations(
 	} finally {
 		await connection.end();
 	}
+}
+
+/** Applied vs pending for every migration in ./drizzle (the folder `migrateDatabase` applies); read-only. */
+export async function migrationStatus(url: string): Promise<MigrationStatusReport> {
+	return drizzleMigrationStatus("drizzle", await appliedMigrations(url));
 }

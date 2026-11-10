@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
+import { drizzleMigrationStatus, type MigrationStatusReport } from "./migration-status.ts";
 
 /** Applies ./drizzle migrations to the database at `url`. */
 export async function migrateDatabase(url: string): Promise<void> {
@@ -30,4 +31,9 @@ export async function appliedMigrations(
 	} finally {
 		await client.end();
 	}
+}
+
+/** Applied vs pending for every migration in ./drizzle (the folder `migrateDatabase` applies); read-only. */
+export async function migrationStatus(url: string): Promise<MigrationStatusReport> {
+	return drizzleMigrationStatus("drizzle", await appliedMigrations(url));
 }

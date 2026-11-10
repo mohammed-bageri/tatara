@@ -154,6 +154,19 @@ describe("CORS origins", () => {
 		expect(allow("https://alnoor.schools.example.com.evil.io")).toBeNull();
 	});
 
+	it("matches subdomains at any depth with nestedSubdomains, still https and dot-bounded", () => {
+		const allow = corsOrigin(["https://*.tenants.example.com"], { nestedSubdomains: true });
+		expect(allow("https://test.tenants.example.com")).toBe("https://test.tenants.example.com");
+		expect(allow("https://a.b.tenants.example.com")).toBe("https://a.b.tenants.example.com");
+		expect(allow("https://tenants.example.com")).toBeNull();
+		expect(allow("https://nottenants.example.com")).toBeNull();
+		expect(allow("https://a..tenants.example.com")).toBeNull();
+		expect(allow("http://a.b.tenants.example.com")).toBeNull();
+		expect(allow("https://a.b.tenants.example.com.evil.io")).toBeNull();
+		expect(allow("https://a.tenants.example.com:8443")).toBeNull();
+		expect(() => corsOrigin(["*"], { nestedSubdomains: true })).toThrow(/must look like/);
+	});
+
 	it("rejects patterns that would match more than one label", () => {
 		expect(() => corsOrigin(["*"])).toThrow(/must look like/);
 		expect(() => corsOrigin(["https://*.*.example.com"])).toThrow(/must look like/);

@@ -68,15 +68,25 @@ export interface CreateAppOptions<E extends HttpEnv> {
 	redactPath?: (path: string) => string;
 }
 
-/** Matches exact origins and `*.`-patterns, where `*` is exactly one DNS label (tenant subdomains). */
-export function corsOrigin(origins: string[]): (origin: string) => string | null {
+export interface CorsOriginOptions {
+	/** `*` matches one or more DNS labels (a.b.example.com), not exactly one; the apex still needs its own entry */
+	nestedSubdomains?: boolean;
+}
+
+/** Matches exact origins and `*.`-patterns, where `*` is one DNS label (tenant subdomains), or any depth with `nestedSubdomains`. */
+export function corsOrigin(
+	origins: string[],
+	options: CorsOriginOptions = {},
+): (origin: string) => string | null {
+	const label = "[a-z0-9-]+";
+	const wildcard = options.nestedSubdomains ? `${label}(?:\\.${label})*` : label;
 	const exact = new Set(origins.filter((o) => !o.includes("*")));
 	const patterns = origins
 		.filter((o) => o.includes("*"))
 		.map((o) => {
 			if (!/^https?:\/\/\*\.[^*]+$/.test(o))
 				throw new Error(`CORS origin pattern "${o}" must look like https://*.example.com`);
-			const escaped = o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace("*", "[a-z0-9-]+");
+			const escaped = o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace("*", wildcard);
 			return new RegExp(`^${escaped}$`, "i");
 		});
 	return (origin) => (exact.has(origin) || patterns.some((p) => p.test(origin)) ? origin : null);
