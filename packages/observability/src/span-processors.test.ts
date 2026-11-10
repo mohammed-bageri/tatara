@@ -58,3 +58,27 @@ describe("telemetry span processors", () => {
 		expect(body).toContain("redacted.by");
 	});
 });
+
+describe("RedactingSpanProcessor", () => {
+	it("rewrites the span name and string attributes", async () => {
+		const { RedactingSpanProcessor } = await import("./index.ts");
+		const processor = new RedactingSpanProcessor((t) => t.replace(/token-\w+/g, "[redacted]"));
+		const attributes: Record<string, unknown> = { "http.target": "/u/token-abc", count: 3 };
+		let name = "GET /u/token-abc";
+		const span = {
+			attributes,
+			get name() {
+				return name;
+			},
+			setAttribute: (k: string, v: unknown) => {
+				attributes[k] = v;
+			},
+			updateName: (n: string) => {
+				name = n;
+			},
+		};
+		processor.onEnding(span as never);
+		expect(name).toBe("GET /u/[redacted]");
+		expect(attributes).toEqual({ "http.target": "/u/[redacted]", count: 3 });
+	});
+});
