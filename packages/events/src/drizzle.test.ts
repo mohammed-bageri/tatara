@@ -149,6 +149,16 @@ describe.skipIf(!DATABASE_URL)("the Drizzle Postgres store", () => {
 
 	afterAll(async () => {
 		await pool?.end();
+		// pool.end() resolves before its sockets close; a FORCE drop would then kill a closing
+		// client with 57P01, which no pool listener catches any more
+		for (let i = 0; i < 100; i++) {
+			const { rows } = await admin.query<{ n: number }>(
+				"select count(*)::int as n from pg_stat_activity where datname = $1",
+				[name],
+			);
+			if (rows[0]?.n === 0) break;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
 		await admin?.query(`drop database if exists ${name} with (force)`);
 		await admin?.end();
 	});

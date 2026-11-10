@@ -32,13 +32,16 @@ async function activeMembership(auth: SessionAuth, userId: string, orgId: unknow
 	return member ? { orgId, role: (member as { role?: string }).role ?? null } : null;
 }
 
-/** The better-auth session (cookie or bearer token) as a principal. Roles come from the admin plugin's `role`. */
+/**
+ * The better-auth session (cookie or bearer token) as a principal; none while the admin plugin's ban
+ * is in force (better-auth keeps a banned user's live sessions). Roles come from the plugin's `role`.
+ */
 export async function sessionPrincipal(
 	auth: SessionAuth,
 	headers: Headers,
 ): Promise<Principal | null> {
 	const session = await auth.api.getSession({ headers });
-	if (!session) return null;
+	if (!session || isBannedNow(session.user)) return null;
 	const user = session.user as { id: string; role?: string | null };
 	const { activeOrganizationId } = session.session as { activeOrganizationId?: string | null };
 	const membership = await activeMembership(auth, user.id, activeOrganizationId);
