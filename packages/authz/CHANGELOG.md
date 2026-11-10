@@ -1,5 +1,12 @@
 # @tatara/authz
 
+## 0.11.2
+
+### Patch Changes
+
+- Updated dependencies [a15c818]
+  - @tatara/auth@0.6.0
+
 ## 0.11.1
 
 ### Patch Changes
