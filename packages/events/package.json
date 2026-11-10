@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/events",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "tatara events: a transactional domain-event outbox with per-subscriber deliveries, retries, reconcile and prune, over an app-owned store",
 	"type": "module",
 	"license": "MIT",
@@ -32,7 +32,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"peerDependencies": {
-		"@tatara/core": "^0.2.0",
+		"@tatara/core": "^0.2.1",
 		"drizzle-orm": "^0.45.4",
 		"zod": "^4.6.7"
 	},

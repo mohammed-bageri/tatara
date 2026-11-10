@@ -1,5 +1,17 @@
 # @tatara/authz
 
+## 0.9.3
+
+### Patch Changes
+
+- 9b9ac7f: The repository moved to github.com/mohammed-bageri/tatara (was tatara-cli); package metadata and docs point there.
+- Updated dependencies [9b9ac7f]
+  - @tatara/auth@0.3.1
+  - @tatara/cache@0.2.1
+  - @tatara/core@0.2.1
+  - @tatara/db@0.3.2
+  - @tatara/http@0.3.1
+
 ## 0.9.2
 
 ### Patch Changes

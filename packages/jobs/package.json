@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/jobs",
-	"version": "0.5.2",
+	"version": "0.5.3",
 	"description": "tatara jobs: consumers, schedules, a typed producer, and worker and cron runners over inline, Postgres, BullMQ and Kafka drivers",
 	"type": "module",
 	"license": "MIT",
@@ -44,7 +44,7 @@
 		"ioredis": "^6.0.0",
 		"croner": "^10.0.1",
 		"zod": "^4.6.7",
-		"@tatara/core": "^0.2.0",
+		"@tatara/core": "^0.2.1",
 		"kafkajs": "^2.2.4"
 	},
 	"devDependencies": {

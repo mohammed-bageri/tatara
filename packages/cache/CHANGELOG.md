@@ -1,5 +1,11 @@
 # @tatara/cache
 
+## 0.2.1
+
+### Patch Changes
+
+- 9b9ac7f: The repository moved to github.com/mohammed-bageri/tatara (was tatara-cli); package metadata and docs point there.
+
 ## 0.2.0
 
 ### Minor Changes

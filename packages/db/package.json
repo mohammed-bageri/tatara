@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/db",
-	"version": "0.3.1",
+	"version": "0.3.2",
 	"description": "tatara database helpers: ids, seeds, database errors, per-driver admin, per-ORM migrations, explain and tinker",
 	"type": "module",
 	"license": "MIT",
@@ -60,7 +60,7 @@
 		"mariadb": "^3.4.5",
 		"mysql2": "^3.24.6",
 		"drizzle-orm": "^0.45.4",
-		"@tatara/core": "^0.2.0",
+		"@tatara/core": "^0.2.1",
 		"zod": "^4.6.7"
 	},
 	"devDependencies": {
