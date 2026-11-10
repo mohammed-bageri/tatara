@@ -54,3 +54,15 @@ export async function sessionPrincipal(
 		claims: {},
 	};
 }
+
+/**
+ * Whether the admin plugin's ban is in force on `user` at `now`. As in better-auth's sign-in check,
+ * a ban whose `banExpires` has passed no longer counts; a user without the fields is never banned.
+ */
+export function isBannedNow(user: unknown, now: Date = new Date()): boolean {
+	const { banned, banExpires } = (user ?? {}) as { banned?: unknown; banExpires?: unknown };
+	if (banned !== true) return false;
+	if (banExpires === null || banExpires === undefined) return true;
+	const expires = new Date(banExpires as string | number | Date).getTime();
+	return Number.isNaN(expires) || expires >= now.getTime();
+}

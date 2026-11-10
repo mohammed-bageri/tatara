@@ -1,9 +1,9 @@
 import { AppError, ForbiddenError, UnauthorizedError } from "@tatara/http";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
-import type { Env, MiddlewareHandler } from "hono";
+import type { Context, Env, MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
 import { type AuthEnv, type PrincipalResolver, principalMiddleware } from "./principal.ts";
-import { sessionPrincipal } from "./session.ts";
+import { isBannedNow, type SessionAuth, sessionPrincipal } from "./session.ts";
 
 /** 400 ORG_REQUIRED: the route acts in an organization and the request didn't say which. */
 export class OrgRequiredError extends AppError {
@@ -20,18 +20,95 @@ export interface AuthInstanceOptions<A> {
 	 * permissions live apart from any customer org's.
 	 */
 	org?: string;
+	/**
+	 * Rate limits and session IPs key on the address the app resolved, never on a header the client
+	 * sent: better-auth reads only `header`, which `handleRequest` sets from `resolve` after dropping
+	 * any inbound copy. better-auth otherwise takes the first, client-controlled X-Forwarded-For entry.
+	 */
+	clientIp?: ClientIpOptions;
+	/** What `requireSession` answers without a (non-banned) session user; default: throws UnauthorizedError. */
+	onUnauthorized?: (c: Context) => Response | Promise<Response>;
+}
+
+export interface ClientIpOptions {
+	/** the caller's address, e.g. `(c) => clientIp(c, { trustedHops: 1 })`; nullish when unknown */
+	resolve: (c: Context) => string | null | undefined;
+	/** default "x-tatara-client-ip" */
+	header?: string;
+	/** sent when `resolve` finds nothing, so such requests share one rate-limit bucket; default "0.0.0.0" */
+	unresolved?: string;
+}
+
+/** The variables `attachSession` sets: pass `typeof auth.$Infer.Session`. */
+export interface SessionEnv<S extends { user: unknown } = { user: unknown; session: unknown }> {
+	Variables: { session: S | null; user: S["user"] | undefined };
+}
+
+/** `options` with better-auth's client-IP lookup pointed at `header` only; other settings kept. */
+export function withClientIpHeader<O extends BetterAuthOptions>(options: O, header: string): O {
+	return {
+		...options,
+		advanced: {
+			...options.advanced,
+			ipAddress: { ...options.advanced?.ipAddress, ipAddressHeaders: [header] },
+		},
+	};
 }
 
 /**
  * The app's better-auth instance plus the middleware every app needs. The options are the app's
- * own (adapter, plugins, hooks); tatara adds nothing to them. Mount `auth.handler` where the app
+ * own (adapter, plugins, cookies, hooks); tatara adds to them only the client-IP header, with
+ * `extra.clientIp`. Mount `handleRequest` (or, without `clientIp`, `auth.handler`) where the app
  * wants it.
  */
 export function createAuthInstance<O extends BetterAuthOptions>(
 	options: O,
 	extra: AuthInstanceOptions<ReturnType<typeof betterAuth<O>>> = {},
 ) {
-	const auth = betterAuth(options);
+	const ipHeader = extra.clientIp ? (extra.clientIp.header ?? "x-tatara-client-ip") : undefined;
+	const auth = betterAuth(ipHeader ? withClientIpHeader(options, ipHeader) : options);
+
+	/** The request's headers without a client-sent copy of the client-IP header. */
+	const inbound = (c: Context): Headers => {
+		if (!ipHeader) return c.req.raw.headers;
+		const headers = new Headers(c.req.raw.headers);
+		headers.delete(ipHeader);
+		return headers;
+	};
+
+	/** Pass a request to better-auth, carrying the resolved client IP when `clientIp` is set. */
+	function handleRequest(c: Context): Promise<Response> {
+		if (!extra.clientIp || !ipHeader) return auth.handler(c.req.raw);
+		const headers = inbound(c);
+		headers.set(ipHeader, extra.clientIp.resolve(c) || (extra.clientIp.unresolved ?? "0.0.0.0"));
+		// Node's fetch needs duplex whenever the copied body is a stream
+		return auth.handler(new Request(c.req.raw, { headers, duplex: "half" } as RequestInit));
+	}
+
+	const getSession = (c: Context) =>
+		(auth as unknown as SessionAuth).api.getSession({ headers: inbound(c) });
+
+	/** Sets `c.var.session` (null without one) and `c.var.user` (undefined without one), as better-auth returns them. */
+	const attachSession = createMiddleware(async (c, next) => {
+		const session = await getSession(c);
+		c.set("session" as never, session as never);
+		c.set("user" as never, session?.user as never);
+		await next();
+	}) as unknown as MiddlewareHandler<Env>;
+
+	/**
+	 * 401 without a session user, or when the admin plugin's ban is in force: better-auth refuses a
+	 * banned user new sessions but keeps the ones they hold. Runs after `attachSession`; with the
+	 * cookie cache on, a ban or revocation lands within its maxAge.
+	 */
+	const requireSession = createMiddleware(async (c, next) => {
+		const user = c.get("user" as never) as unknown;
+		if (!user || isBannedNow(user)) {
+			if (extra.onUnauthorized) return extra.onUnauthorized(c);
+			throw new UnauthorizedError();
+		}
+		await next();
+	}) as unknown as MiddlewareHandler<Env>;
 
 	const inOrg = (resolve: PrincipalResolver): PrincipalResolver =>
 		extra.org
@@ -45,7 +122,7 @@ export function createAuthInstance<O extends BetterAuthOptions>(
 	const attachPrincipal = principalMiddleware<AuthEnv>(
 		(
 			[
-				(c) => sessionPrincipal(auth as never, c.req.raw.headers),
+				(c) => sessionPrincipal(auth as never, inbound(c)),
 				...(extra.resolvers ?? []).map((resolver) => resolver(auth)),
 			] as PrincipalResolver[]
 		).map(inOrg),
@@ -88,7 +165,7 @@ export function createAuthInstance<O extends BetterAuthOptions>(
 		}) as unknown as MiddlewareHandler<Env>;
 	}
 
-	return { auth, attachPrincipal, requireOrg };
+	return { auth, attachPrincipal, requireOrg, attachSession, requireSession, handleRequest };
 }
 
 interface MemberLookup {
