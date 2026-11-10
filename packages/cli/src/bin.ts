@@ -50,9 +50,11 @@ program
 	.description("Regenerate src/generated from discovered module files")
 	.option("--quiet", "no output")
 	.action(async (flags: { quiet?: boolean }) => {
-		const { written } = await sync();
+		const { written, removed } = await sync();
 		if (!flags.quiet && written.length > 0)
 			console.log(pc.dim(`tatara sync: ${written.length} file(s) updated`));
+		if (!flags.quiet && removed.length > 0)
+			console.log(pc.dim(`tatara sync: ${removed.length} stale file(s) removed`));
 	});
 
 program

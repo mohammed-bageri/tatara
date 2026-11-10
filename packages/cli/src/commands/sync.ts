@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { x } from "tinyexec";
 import { glob } from "tinyglobby";
@@ -319,6 +319,8 @@ ${check}`;
 
 export interface SyncResult {
 	written: string[];
+	/** generated files a previous sync wrote that nothing produces any more */
+	removed: string[];
 }
 
 async function writeIfChanged(path: string, content: string, written: string[]) {
@@ -333,8 +335,11 @@ export async function sync(project: Project = loadProject()): Promise<SyncResult
 	const { root } = project;
 	const ejected = ejectedPackages(project.config);
 	// generated files import ejected packages from the app's copy
-	const write = (path: string, content: string, out: string[]) =>
-		writeIfChanged(path, pointAtEjected(content, ejected), out);
+	const kept = new Set<string>();
+	const write = (path: string, content: string, out: string[]) => {
+		kept.add(path);
+		return writeIfChanged(path, pointAtEjected(content, ejected), out);
+	};
 	const out = join(root, "src/generated");
 	await mkdir(out, { recursive: true });
 	const written: string[] = [];
@@ -517,5 +522,15 @@ export type PermissionKey =
 		}
 	}
 
-	return { written };
+	// only files carrying our header: anything else in src/generated is the app's
+	const removed: string[] = [];
+	for (const name of await readdir(out)) {
+		const path = join(out, name);
+		if (!name.endsWith(".ts") || kept.has(path)) continue;
+		if (!(await readFile(path, "utf8")).startsWith(HEADER)) continue;
+		await rm(path);
+		removed.push(path);
+	}
+
+	return { written, removed };
 }
