@@ -7,7 +7,7 @@ export interface SessionAuth {
 	api: {
 		getSession(input: { headers: Headers }): Promise<{
 			user: { id: string };
-			session: { id: string; expiresAt: Date; impersonatedBy?: string };
+			session: object;
 		} | null>;
 	};
 	$context: Promise<{
@@ -45,8 +45,13 @@ export async function sessionPrincipal(
 	const session = await auth.api.getSession({ headers });
 	if (!session || isBannedNow(session.user)) return null;
 	const user = session.user as { id: string; role?: string | null };
-	const { activeOrganizationId } = session.session as { activeOrganizationId?: string | null };
-	const membership = await activeMembership(auth, user.id, activeOrganizationId);
+	const sessionObj = session.session as {
+		id: string;
+		expiresAt: Date;
+		impersonatedBy?: string;
+		activeOrganizationId?: string | null;
+	};
+	const membership = await activeMembership(auth, user.id, sessionObj.activeOrganizationId);
 	return {
 		userId: user.id,
 		orgId: membership?.orgId ?? null,
@@ -60,9 +65,9 @@ export async function sessionPrincipal(
 		claims: {
 			...(session.user as Record<string, unknown>),
 			session: {
-				id: session.session.id,
-				impersonatedBy: session.session.impersonatedBy ?? null,
-				expiresAt: session.session.expiresAt,
+				id: sessionObj.id,
+				impersonatedBy: sessionObj.impersonatedBy ?? null,
+				expiresAt: sessionObj.expiresAt,
 			},
 		},
 	};
