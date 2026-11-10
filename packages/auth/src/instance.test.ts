@@ -6,6 +6,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
 	type AuthEnv,
 	createAuthInstance,
+	currentOrgId,
 	currentPrincipal,
 	type Principal,
 	requireAuth,
@@ -65,6 +66,7 @@ function app() {
 	});
 	app.use(attachPrincipal);
 	app.get("/org", requireOrg(), (c) => c.json(currentPrincipal(c)));
+	app.get("/org-id", requireOrg(), (c) => c.json({ orgId: currentOrgId(c) }));
 	app.get("/me", requireAuth(), (c) => c.json(currentPrincipal(c)));
 	app.get("/org-cookie", requireOrg({ cookie: "app_org" }), (c) => c.json(currentPrincipal(c)));
 	app.get("/orgs/:orgId/me", requireOrg({ param: "orgId" }), (c) => c.json(currentPrincipal(c)));
@@ -113,9 +115,9 @@ describe("requireOrg", () => {
 		const none = await app().request("/org", { headers });
 		expect(none.status).toBe(400);
 		expect(await none.json()).toMatchObject({ code: "ORG_REQUIRED" });
-		expect(
-			(await app().request("/org", { headers: { ...headers, "x-org-id": orgId } })).status,
-		).toBe(403);
+		const outsiderRes = await app().request("/org", { headers: { ...headers, "x-org-id": orgId } });
+		expect(outsiderRes.status).toBe(403);
+		expect(await outsiderRes.json()).toMatchObject({ code: "NOT_ORG_MEMBER" });
 	});
 
 	it("takes the org from the path when told to, and the header can't override it", async () => {
@@ -144,6 +146,12 @@ describe("requireOrg", () => {
 			headers: { ...withCookie(other), "x-org-id": orgId },
 		});
 		expect(header.status).toBe(200);
+	});
+
+	it("gives the org the request acts in", async () => {
+		const { orgId, headers } = await member();
+		const res = await app().request("/org-id", { headers: { ...headers, "x-org-id": orgId } });
+		expect(await res.json()).toEqual({ orgId });
 	});
 
 	it("401s without a principal", async () => {

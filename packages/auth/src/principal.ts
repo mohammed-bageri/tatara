@@ -1,4 +1,4 @@
-import { ForbiddenError, UnauthorizedError } from "@tatara/http";
+import { AppError, ForbiddenError, UnauthorizedError } from "@tatara/http";
 import type { Context, Env, MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
 
@@ -74,4 +74,18 @@ export function currentPrincipal(c: PrincipalReader): Principal {
 	const principal = c.get("principal");
 	if (!principal) throw new UnauthorizedError();
 	return principal;
+}
+
+/** 400 ORG_REQUIRED: the route acts in an organization and the request didn't say which. */
+export class OrgRequiredError extends AppError {
+	constructor() {
+		super(400, "ORG_REQUIRED", "Choose an organization (x-org-id header)", undefined, true);
+	}
+}
+
+/** The org the request acts in, after `requireOrg`; 400 ORG_REQUIRED when it names none. */
+export function currentOrgId(c: PrincipalReader): string {
+	const { orgId } = currentPrincipal(c);
+	if (!orgId) throw new OrgRequiredError();
+	return orgId;
 }

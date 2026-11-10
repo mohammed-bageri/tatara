@@ -3,15 +3,16 @@ import { type BetterAuthOptions, betterAuth } from "better-auth";
 import type { Context, Env, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
-import { type AuthEnv, type PrincipalResolver, principalMiddleware } from "./principal.ts";
-import { isBannedNow, type SessionAuth, sessionPrincipal } from "./session.ts";
+import {
+	type AuthEnv,
+	OrgRequiredError,
+	type PrincipalResolver,
+	principalMiddleware,
+} from "./principal.ts";
 
-/** 400 ORG_REQUIRED: the route acts in an organization and the request didn't say which. */
-export class OrgRequiredError extends AppError {
-	constructor() {
-		super(400, "ORG_REQUIRED", "Choose an organization (x-org-id header)", undefined, true);
-	}
-}
+export { OrgRequiredError } from "./principal.ts";
+
+import { isBannedNow, type SessionAuth, sessionPrincipal } from "./session.ts";
 
 export interface AuthInstanceOptions<A> {
 	/** other credentials besides the session, tried in order (e.g. Keycloak tokens) */
@@ -152,7 +153,7 @@ export function createAuthInstance<O extends BetterAuthOptions>(
 			const vouched =
 				principal.kind === "service" ? [principal.orgId] : (principal.orgs ?? undefined);
 			if (vouched && !vouched.includes(orgId))
-				throw new ForbiddenError("Not a member of this organization");
+				throw new ForbiddenError("Not a member of this organization", { code: "NOT_ORG_MEMBER" });
 			if (principal.kind !== "service") {
 				const { adapter } = await (
 					auth as unknown as { $context: Promise<{ adapter: MemberLookup }> }
@@ -164,7 +165,8 @@ export function createAuthInstance<O extends BetterAuthOptions>(
 						{ field: "userId", value: principal.userId },
 					],
 				});
-				if (!member && !vouched) throw new ForbiddenError("Not a member of this organization");
+				if (!member && !vouched)
+					throw new ForbiddenError("Not a member of this organization", { code: "NOT_ORG_MEMBER" });
 				c.set("principal", { ...principal, orgId, orgRole: member?.role ?? null });
 			}
 			await next();
