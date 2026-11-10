@@ -1,15 +1,17 @@
-import { z } from "@hono/zod-openapi";
+import { createRoute, z } from "@hono/zod-openapi";
 import { pino } from "pino";
 import { describe, expect, it } from "vitest";
 import {
 	clientIp,
 	corsOrigin,
 	createApp,
+	createRouter,
 	cursorPage,
 	decodeCursor,
 	encodeCursor,
 	type HttpEnv,
 	handleErrors,
+	jsonBody,
 	type RateLimitCounter,
 	rateLimit,
 	trustedClientIp,
@@ -210,5 +212,128 @@ describe("request log", () => {
 		await app.request("/email/unsubscribe/secret-token");
 		expect(entries.map((e) => e.path)).toContain("/email/unsubscribe/[redacted]");
 		expect(JSON.stringify(entries)).not.toContain("secret-token");
+	});
+});
+
+describe("configurable validation", () => {
+	it("createRouter() uses first-issue message when configured", async () => {
+		const router = createRouter({ validation: { message: "first-issue" } });
+		router.openapi(
+			createRoute({
+				method: "post",
+				path: "/test",
+				request: { body: jsonBody(z.object({ name: z.string().min(3) }), "Test") },
+				responses: { 200: { description: "OK" } },
+			}),
+			(c) => c.text("ok"),
+		);
+		const a = app();
+		a.route("/", router);
+		handleErrors(a);
+		const res = await a.request("/test", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "ab" }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toContain("at least 3 characters");
+		expect(body.code).toBe("VALIDATION_ERROR");
+	});
+
+	it("createRouter() uses custom detail when configured", async () => {
+		const router = createRouter({
+			validation: { detail: (issue) => ({ field: issue.path.join("."), msg: issue.message }) },
+		});
+		router.openapi(
+			createRoute({
+				method: "post",
+				path: "/test",
+				request: { body: jsonBody(z.object({ email: z.string().email() }), "Test") },
+				responses: { 200: { description: "OK" } },
+			}),
+			(c) => c.text("ok"),
+		);
+		const a = app();
+		a.route("/", router);
+		handleErrors(a);
+		const res = await a.request("/test", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ email: "not-an-email" }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.details).toEqual([{ field: "email", msg: expect.stringContaining("email") }]);
+	});
+
+	it("createRouter() defaults remain unchanged when no options given", async () => {
+		const router = createRouter();
+		router.openapi(
+			createRoute({
+				method: "post",
+				path: "/test",
+				request: { body: jsonBody(z.object({ name: z.string() }), "Test") },
+				responses: { 200: { description: "OK" } },
+			}),
+			(c) => c.text("ok"),
+		);
+		const a = app();
+		a.route("/", router);
+		handleErrors(a);
+		const res = await a.request("/test", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: 123 }),
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toBe("Invalid request");
+		expect(body.details).toEqual([{ path: "name", message: expect.any(String), code: "invalid_type" }]);
+	});
+
+	it("handleErrors() uses first-issue message for thrown ZodErrors when configured", async () => {
+		const a = app();
+		a.get("/boom", () => {
+			const schema = z.object({ x: z.string().min(5) });
+			schema.parse({ x: "ab" });
+			return a.request("/never");
+		});
+		handleErrors(a, { validation: { message: "first-issue" } });
+		const res = await a.request("/boom");
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toContain("at least 5 characters");
+	});
+
+	it("handleErrors() uses custom detail for thrown ZodErrors when configured", async () => {
+		const a = app();
+		a.get("/boom", () => {
+			const schema = z.object({ y: z.number() });
+			schema.parse({ y: "not-a-number" });
+			return a.request("/never");
+		});
+		handleErrors(a, {
+			validation: { detail: (issue) => ({ at: issue.path.join("/"), reason: issue.message }) },
+		});
+		const res = await a.request("/boom");
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.details).toEqual([{ at: "y", reason: expect.stringContaining("number") }]);
+	});
+
+	it("handleErrors() defaults remain unchanged when no validation option given", async () => {
+		const a = app();
+		a.get("/boom", () => {
+			const schema = z.object({ z: z.boolean() });
+			schema.parse({ z: "yes" });
+			return a.request("/never");
+		});
+		handleErrors(a);
+		const res = await a.request("/boom");
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toBe("Invalid request");
+		expect(body.details).toEqual([{ path: "z", message: expect.any(String), code: "invalid_type" }]);
 	});
 });
