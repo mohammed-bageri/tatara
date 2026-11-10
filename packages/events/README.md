@@ -47,6 +47,21 @@ A definition keeps any extra fields you give it (`labelKey`, …). `tatara sync`
 `src/generated/events.ts` (with `EventPayloads`) and `*/event-subscribers/*.ts` into
 `src/generated/subscribers.ts`.
 
+Event names are validated at definition and emit. By default, names must be dotted lowercase
+(e.g. `billing.invoice.paid`). Apps can enforce their own naming convention:
+
+```ts
+// Require exactly three parts: module.aggregate.verb
+const threePartPattern = /^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*$/;
+
+// Or validate with a function returning an error message (or undefined if valid)
+const validator = (name: string) => {
+	const parts = name.split(".");
+	if (parts.length !== 3) return "Event name must have exactly 3 parts (module.aggregate.verb)";
+	return undefined;
+};
+```
+
 ## Use
 
 ```ts
@@ -57,6 +72,7 @@ export const events = createEvents({
 	subscribers: async () => (await import("#generated/subscribers")).subscribers,
 	jobs, // optional: without it the relay dispatches in its own process
 	logger,
+	eventNamePattern: threePartPattern, // optional: custom naming rule (RegExp or validator function)
 });
 
 await events.transaction(async (tx) => {

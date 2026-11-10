@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import type { CoreLogger } from "@tatara/core";
 import { z } from "zod";
 import {
+	defineEvent,
 	type EmitInput,
 	type EventDefinition,
+	type EventNameValidator,
 	type EventRecord,
 	type Subscriber,
 	SYSTEM_ACTOR,
@@ -71,6 +73,11 @@ export interface EventsOptions<Executor, Defs extends readonly EventDefinition[]
 	 */
 	jobs?: EventsJobs;
 	logger: CoreLogger;
+	/**
+	 * Validates event names at registration and emit: a RegExp pattern or a function returning an
+	 * error message (or undefined if valid). Default: two or more dot-separated lowercase segments.
+	 */
+	eventNamePattern?: RegExp | ((name: string) => string | undefined);
 	/** bound on one relay publish (default 2.5s): a hung broker must not hold row locks */
 	publishTimeoutMs?: number;
 	/** after a publish times out, the post-commit fast path pauses this long (default 30s) */
@@ -153,11 +160,16 @@ export function createEvents<
 	const reconcileLookbackMs = options.reconcileLookbackMs ?? 30 * 60_000;
 	const reconcileGraceMs = options.reconcileGraceMs ?? 2 * 60_000;
 	const retentionMonths = options.retentionMonths ?? 13;
+	const validator = options.eventNamePattern;
 
 	const definitions = new Map<string, EventDefinition>();
 	if (options.events) {
 		assertUnique(options.events, (d) => d.name, "event name");
-		for (const d of options.events) definitions.set(d.name, d);
+		for (const d of options.events) {
+			// Validate each registered definition against the custom pattern
+			defineEvent(d as never, validator);
+			definitions.set(d.name, d);
+		}
 	}
 
 	let loaded: Promise<readonly Subscriber[]> | undefined;
@@ -180,7 +192,11 @@ export function createEvents<
 	const context = new AsyncLocalStorage<TxContext>();
 
 	function definitionOf(event: EventDefinition | string): EventDefinition {
-		if (typeof event !== "string") return event;
+		if (typeof event !== "string") {
+			// For event definitions passed directly, validate them at emit time
+			defineEvent(event as never, validator);
+			return event;
+		}
 		const def = definitions.get(event);
 		if (!def) throw new Error(`Unknown event "${event}"`);
 		return def;

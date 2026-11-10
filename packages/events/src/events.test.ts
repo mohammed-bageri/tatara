@@ -113,6 +113,49 @@ describe("definitions", () => {
 			/at least one event/,
 		);
 	});
+
+	it("accepts a custom event name pattern (RegExp)", () => {
+		// Three-part pattern: module.aggregate.verb
+		const threePartPattern = /^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*$/;
+
+		// Valid three-part name
+		const validDef = defineEvent(
+			{ name: "notes.note.created", schema: z.object({}) },
+			threePartPattern,
+		);
+		expect(validDef.name).toBe("notes.note.created");
+
+		// Invalid two-part name
+		expect(() =>
+			defineEvent({ name: "note.created", schema: z.object({}) }, threePartPattern),
+		).toThrow(/does not match the required pattern/);
+	});
+
+	it("accepts a custom event name validator (function)", () => {
+		const validator = (name: string) => {
+			const parts = name.split(".");
+			if (parts.length !== 3) return "Event name must have exactly 3 parts (module.aggregate.verb)";
+			return undefined;
+		};
+
+		// Valid three-part name
+		const validDef = defineEvent({ name: "notes.note.created", schema: z.object({}) }, validator);
+		expect(validDef.name).toBe("notes.note.created");
+
+		// Invalid two-part name
+		expect(() => defineEvent({ name: "note.created", schema: z.object({}) }, validator)).toThrow(
+			/must have exactly 3 parts/,
+		);
+	});
+
+	it("uses default validation when no custom validator is provided", () => {
+		// Valid with default (two or more parts)
+		const validDef = defineEvent({ name: "a.b", schema: z.object({}) });
+		expect(validDef.name).toBe("a.b");
+
+		// Invalid with default
+		expect(() => defineEvent({ name: "NoCaps", schema: z.object({}) })).toThrow(/dotted lowercase/);
+	});
 });
 
 describe("emit", () => {
@@ -198,6 +241,45 @@ describe("emit", () => {
 		expect(ids).toHaveLength(2500);
 		expect(store.events).toHaveLength(2500);
 		expect(await events.emitMany(undefined, noteCreated, [])).toEqual([]);
+	});
+
+	it("validates event names at registration with custom pattern", () => {
+		const threePartPattern = /^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*$/;
+		const twoPart = defineEvent({ name: "note.created", schema: z.object({}) });
+		const store = memoryEventStore();
+
+		// Should reject events that don't match the custom pattern at registration
+		expect(() =>
+			createEvents({
+				store,
+				subscribers: [],
+				events: [twoPart] as never,
+				logger,
+				eventNamePattern: threePartPattern,
+			}),
+		).toThrow(/does not match the required pattern/);
+	});
+
+	it("validates event names at emit with custom validator", async () => {
+		const validator = (name: string) => {
+			const parts = name.split(".");
+			if (parts.length !== 3) return "Event name must have exactly 3 parts";
+			return undefined;
+		};
+
+		const store = memoryEventStore();
+		const events = createEvents({
+			store,
+			subscribers: [],
+			logger,
+			eventNamePattern: validator,
+		});
+		const twoPart = defineEvent({ name: "note.created", schema: z.object({}) });
+
+		// Should reject event definitions at emit that don't match custom validator
+		await expect(events.emit(undefined, twoPart, { payload: {} })).rejects.toThrow(
+			/must have exactly 3 parts/,
+		);
 	});
 });
 
