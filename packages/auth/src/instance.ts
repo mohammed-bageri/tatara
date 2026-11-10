@@ -1,6 +1,7 @@
 import { AppError, ForbiddenError, UnauthorizedError } from "@tatara/http";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import type { Context, Env, MiddlewareHandler } from "hono";
+import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import { type AuthEnv, type PrincipalResolver, principalMiddleware } from "./principal.ts";
 import { isBannedNow, type SessionAuth, sessionPrincipal } from "./session.ts";
@@ -129,18 +130,23 @@ export function createAuthInstance<O extends BetterAuthOptions>(
 	) as unknown as MiddlewareHandler<Env>;
 
 	/**
-	 * The org the request acts in: the `x-org-id` header, else the session's active org; or, with
+	 * The org the request acts in: the `x-org-id` header, else `cookie` when set (links a browser
+	 * opens without headers), else the session's active org; or, with
 	 * `param`, the path's (`/orgs/:orgId/...`), which nothing else overrides. The caller must be a
 	 * member; `principal.orgId` and `orgRole` are set from the member row.
 	 */
-	function requireOrg(opts: { header?: string; param?: string } = {}): MiddlewareHandler<Env> {
+	function requireOrg(
+		opts: { header?: string; param?: string; cookie?: string } = {},
+	): MiddlewareHandler<Env> {
 		const header = opts.header ?? "x-org-id";
 		return createMiddleware<AuthEnv>(async (c, next) => {
 			const principal = c.get("principal");
 			if (!principal) throw new UnauthorizedError();
 			const orgId = opts.param
 				? c.req.param(opts.param)
-				: (c.req.header(header) ?? principal.orgId);
+				: c.req.header(header)?.trim() ||
+					(opts.cookie ? getCookie(c, opts.cookie) : undefined) ||
+					principal.orgId;
 			if (!orgId) throw new OrgRequiredError();
 			// a service token is issued for one org; a token's org claim beats member rows it left behind
 			const vouched =

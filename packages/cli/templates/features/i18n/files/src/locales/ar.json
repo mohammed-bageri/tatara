@@ -3,6 +3,7 @@
 		"VALIDATION_ERROR": "الطلب غير صالح",
 		"UNAUTHORIZED": "يجب تسجيل الدخول",
 		"FORBIDDEN": "ليس لديك صلاحية للقيام بذلك",
+		"PERMISSION_DENIED": "ليس لديك صلاحية للقيام بذلك",
 		"NOT_FOUND": "غير موجود",
 		"CONFLICT": "موجود مسبقاً",
 		"INTERNAL_ERROR": "حدث خطأ ما"

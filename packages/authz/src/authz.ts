@@ -234,7 +234,12 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 				const principal = c.get("principal");
 				if (!principal) throw new UnauthorizedError();
 				if (!(await checkPermission(principal, permission, scope))) {
-					throw new ForbiddenError(`Missing permission ${permission}${scope ? ` (${scope})` : ""}`);
+					const missing = `${permission}${scope ? `:${scope}` : ""}`;
+					// a code of its own, with what was missing, so clients can explain it
+					throw new ForbiddenError(`Missing permission ${missing}`, {
+						code: "PERMISSION_DENIED",
+						details: { permission: missing },
+					});
 				}
 				await next();
 			},

@@ -193,3 +193,22 @@ describe("timeouts", () => {
 		expect((await a.request("/reports/annual")).status).toBe(200);
 	});
 });
+
+describe("request log", () => {
+	it("hides what redactPath removes from the logged path", async () => {
+		const entries: { path?: string }[] = [];
+		const capture = pino(
+			{ level: "info" },
+			{ write: (line: string) => entries.push(JSON.parse(line)) },
+		);
+		const app = createApp<HttpEnv>({
+			logger: capture,
+			bodyLimitBytes: 1024,
+			redactPath: (path) => path.replace(/\/unsubscribe\/[^/]+/, "/unsubscribe/[redacted]"),
+		});
+		app.get("/email/unsubscribe/:token", (c) => c.text("ok"));
+		await app.request("/email/unsubscribe/secret-token");
+		expect(entries.map((e) => e.path)).toContain("/email/unsubscribe/[redacted]");
+		expect(JSON.stringify(entries)).not.toContain("secret-token");
+	});
+});
