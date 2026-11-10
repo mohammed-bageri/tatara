@@ -32,13 +32,16 @@ async function activeMembership(auth: SessionAuth, userId: string, orgId: unknow
 	return member ? { orgId, role: (member as { role?: string }).role ?? null } : null;
 }
 
-/** The better-auth session (cookie or bearer token) as a principal. Roles come from the admin plugin's `role`. */
+/**
+ * The better-auth session (cookie or bearer token) as a principal; none while the admin plugin's ban
+ * is in force (better-auth keeps a banned user's live sessions). Roles come from the plugin's `role`.
+ */
 export async function sessionPrincipal(
 	auth: SessionAuth,
 	headers: Headers,
 ): Promise<Principal | null> {
 	const session = await auth.api.getSession({ headers });
-	if (!session) return null;
+	if (!session || isBannedNow(session.user)) return null;
 	const user = session.user as { id: string; role?: string | null };
 	const { activeOrganizationId } = session.session as { activeOrganizationId?: string | null };
 	const membership = await activeMembership(auth, user.id, activeOrganizationId);
@@ -53,4 +56,16 @@ export async function sessionPrincipal(
 		kind: "user",
 		claims: {},
 	};
+}
+
+/**
+ * Whether the admin plugin's ban is in force on `user` at `now`. As in better-auth's sign-in check,
+ * a ban whose `banExpires` has passed no longer counts; a user without the fields is never banned.
+ */
+export function isBannedNow(user: unknown, now: Date = new Date()): boolean {
+	const { banned, banExpires } = (user ?? {}) as { banned?: unknown; banExpires?: unknown };
+	if (banned !== true) return false;
+	if (banExpires === null || banExpires === undefined) return true;
+	const expires = new Date(banExpires as string | number | Date).getTime();
+	return Number.isNaN(expires) || expires >= now.getTime();
 }

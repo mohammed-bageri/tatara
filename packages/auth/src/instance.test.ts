@@ -1,9 +1,15 @@
 import { createApp, type HttpEnv, handleErrors } from "@tatara/http";
 import { memoryAdapter } from "better-auth/adapters/memory";
-import { bearer, organization } from "better-auth/plugins";
+import { admin, bearer, organization } from "better-auth/plugins";
 import { pino } from "pino";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { type AuthEnv, createAuthInstance, currentPrincipal, type Principal } from "./index.ts";
+import {
+	type AuthEnv,
+	createAuthInstance,
+	currentPrincipal,
+	type Principal,
+	requireAuth,
+} from "./index.ts";
 import { createTestUser, sessionHeaders } from "./testing.ts";
 
 interface Env extends HttpEnv {
@@ -34,7 +40,7 @@ const { auth, attachPrincipal, requireOrg } = createAuthInstance(
 		secret: "test-secret-that-is-at-least-32-characters",
 		baseURL: "http://localhost",
 		database: memoryAdapter(db),
-		plugins: [bearer(), organization()],
+		plugins: [bearer(), organization(), admin()],
 	},
 	{
 		resolvers: [
@@ -59,6 +65,7 @@ function app() {
 	});
 	app.use(attachPrincipal);
 	app.get("/org", requireOrg(), (c) => c.json(currentPrincipal(c)));
+	app.get("/me", requireAuth(), (c) => c.json(currentPrincipal(c)));
 	app.get("/orgs/:orgId/me", requireOrg({ param: "orgId" }), (c) => c.json(currentPrincipal(c)));
 	handleErrors(app);
 	return app;
@@ -167,5 +174,32 @@ describe("an instance whose principals act in one fixed org", () => {
 		const userId = await createTestUser(staff.auth);
 		const res = await hono.request("/me", { headers: await sessionHeaders(staff.auth, userId) });
 		expect(await res.json()).toMatchObject({ userId, orgId: "platform", orgRole: null });
+	});
+});
+
+describe("a banned user's live session", () => {
+	const hour = 3_600_000;
+	async function banned(banExpires: Date | null) {
+		const m = await member();
+		const user = db.user?.find((u) => u.id === m.userId) as Record<string, unknown>;
+		Object.assign(user, { banned: true, banExpires });
+		return m;
+	}
+
+	it("gets no principal: requireAuth() and requireOrg() answer 401", async () => {
+		const { orgId, headers } = await banned(null);
+		expect((await app().request("/me", { headers })).status).toBe(401);
+		expect(
+			(await app().request("/org", { headers: { ...headers, "x-org-id": orgId } })).status,
+		).toBe(401);
+		const until = await banned(new Date(Date.now() + hour));
+		expect((await app().request("/me", { headers: until.headers })).status).toBe(401);
+	});
+
+	it("passes once the ban has expired", async () => {
+		const { orgId, userId, headers } = await banned(new Date(Date.now() - hour));
+		expect((await app().request("/me", { headers })).status).toBe(200);
+		const res = await app().request("/org", { headers: { ...headers, "x-org-id": orgId } });
+		expect(await res.json()).toMatchObject({ userId, orgId });
 	});
 });

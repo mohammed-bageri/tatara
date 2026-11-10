@@ -8,8 +8,11 @@ export {
 } from "./delivery.ts";
 export {
 	type AuthInstanceOptions,
+	type ClientIpOptions,
 	createAuthInstance,
 	OrgRequiredError,
+	type SessionEnv,
+	withClientIpHeader,
 } from "./instance.ts";
 export { mergeAuthOpenApi, type OpenApiAuth } from "./openapi.ts";
 export {
@@ -21,4 +24,4 @@ export {
 	requireAuth,
 	requireRole,
 } from "./principal.ts";
-export { type SessionAuth, sessionPrincipal } from "./session.ts";
+export { isBannedNow, type SessionAuth, sessionPrincipal } from "./session.ts";
