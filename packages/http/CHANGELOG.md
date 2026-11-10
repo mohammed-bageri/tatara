@@ -1,5 +1,11 @@
 # @tatara/http
 
+## 0.5.0
+
+### Minor Changes
+
+- cbe1757: Event definitions take an optional `label` (how a UI names the event). `isBlockedResponse(error)` from @tatara/ai tells a safety refusal from a failed request. `clientIp(c, { trustedHeader })` reads the address the app's own proxy sets (x-real-ip, cf-connecting-ip). More tests for the database error helpers.
+
 ## 0.4.0
 
 ### Minor Changes

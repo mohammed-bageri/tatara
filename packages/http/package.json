@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/http",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"description": "tatara HTTP: Hono app setup, errors, envelope, OpenAPI docs and route mounting",
 	"type": "module",
 	"license": "MIT",
