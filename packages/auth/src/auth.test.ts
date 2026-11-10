@@ -75,14 +75,20 @@ describe("principalMiddleware + sessionPrincipal", () => {
 		const userId = await createTestUser(auth, { fields: { role: "admin, teacher" } });
 		const res = await app().request("/me", { headers: await sessionHeaders(auth, userId) });
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({
+		expect(await res.json()).toMatchObject({
 			userId,
 			orgId: null,
 			orgRole: null,
 			roles: ["admin", "teacher"],
 			kind: "user",
-			claims: {},
+			claims: { id: userId, role: "admin, teacher" },
 		});
+	});
+
+	it("carries the session user's attributes as claims", async () => {
+		const userId = await createTestUser(auth, { email: "sara@example.com", name: "Sara" });
+		const res = await app().request("/me", { headers: await sessionHeaders(auth, userId) });
+		expect((await res.json()).claims).toMatchObject({ email: "sara@example.com", name: "Sara" });
 	});
 
 	it("defaults roles to user", async () => {
