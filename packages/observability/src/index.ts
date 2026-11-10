@@ -10,6 +10,7 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
 	BatchSpanProcessor,
 	ParentBasedSampler,
+	type Span,
 	type SpanProcessor,
 	TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace";
@@ -31,18 +32,47 @@ export interface TelemetryOptions {
 	autoInstrument?: boolean;
 	/** run on every span before it is exported, in order (e.g. to redact secrets from attributes) */
 	spanProcessors?: SpanProcessor[];
+	/** hides secrets that travel in paths (tokens in links) from span names and attributes */
+	redactPath?: (text: string) => string;
+}
+
+/** Rewrites span names and string attributes through `redact` before they are exported. */
+export class RedactingSpanProcessor implements SpanProcessor {
+	readonly #redact: (text: string) => string;
+	constructor(redact: (text: string) => string) {
+		this.#redact = redact;
+	}
+	onStart(): void {}
+	onEnding(span: Span): void {
+		for (const [key, value] of Object.entries(span.attributes)) {
+			if (typeof value !== "string") continue;
+			const redacted = this.#redact(value);
+			if (redacted !== value) span.setAttribute(key, redacted);
+		}
+		const name = this.#redact(span.name);
+		if (name !== span.name) span.updateName(name);
+	}
+	onEnd(): void {}
+	forceFlush(): Promise<void> {
+		return Promise.resolve();
+	}
+	shutdown(): Promise<void> {
+		return Promise.resolve();
+	}
 }
 
 /** Starts OpenTelemetry for this process and flushes it on shutdown; null when no endpoint is set. */
 export function startTelemetry(options: TelemetryOptions): NodeSDK | null {
 	if (!options.endpoint) return null;
-	const base = options.endpoint.replace(/\/$/, "");
+	// the base URL; an endpoint given with its /v1/traces path works too
+	const base = options.endpoint.replace(/\/+$/, "").replace(/\/v1\/traces$/, "");
 	const sdk = new NodeSDK({
 		resource: resourceFromAttributes({
 			"service.name": options.serviceName,
 			...(options.serviceVersion ? { "service.version": options.serviceVersion } : {}),
 		}),
 		spanProcessors: [
+			...(options.redactPath ? [new RedactingSpanProcessor(options.redactPath)] : []),
 			...(options.spanProcessors ?? []),
 			new BatchSpanProcessor({
 				exporter: new OTLPTraceExporter({ url: `${base}/v1/traces`, headers: options.headers }),
