@@ -1,5 +1,11 @@
 # @tatara/core
 
+## 0.2.2
+
+### Patch Changes
+
+- d623a79: Shutdown exits 1 when any shutdown hook failed (it exited 0 on a signal), so a process supervisor sees a failed cleanup.
+
 ## 0.2.1
 
 ### Patch Changes
