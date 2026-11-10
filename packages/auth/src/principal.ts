@@ -11,6 +11,11 @@ export interface Principal {
 	orgs?: string[];
 	roles: string[];
 	kind: "user" | "service";
+	/**
+	 * The identity's attributes. For session principals: user fields (email, name, app-specific fields)
+	 * plus `session: { id, impersonatedBy, expiresAt }` for binding realtime resources and detecting
+	 * staff impersonation. For token principals: the token's claims.
+	 */
 	claims: Record<string, unknown>;
 }
 

@@ -7,7 +7,7 @@ export interface SessionAuth {
 	api: {
 		getSession(input: { headers: Headers }): Promise<{
 			user: { id: string };
-			session: object;
+			session: { id: string; expiresAt: Date; impersonatedBy?: string };
 		} | null>;
 	};
 	$context: Promise<{
@@ -35,7 +35,8 @@ async function activeMembership(auth: SessionAuth, userId: string, orgId: unknow
 /**
  * The better-auth session (cookie or bearer token) as a principal; none while the admin plugin's ban
  * is in force (better-auth keeps a banned user's live sessions). Roles come from the plugin's `role`;
- * `claims` holds the session user (email, name, the app's additional fields).
+ * `claims` holds the session user (email, name, the app's additional fields) and the session identity
+ * (id, impersonatedBy, expiresAt) under the `session` key.
  */
 export async function sessionPrincipal(
 	auth: SessionAuth,
@@ -56,7 +57,14 @@ export async function sessionPrincipal(
 			.filter(Boolean),
 		kind: "user",
 		// the identity's attributes (email, name, the app's own user fields), as a token carries claims
-		claims: { ...(session.user as Record<string, unknown>) },
+		claims: {
+			...(session.user as Record<string, unknown>),
+			session: {
+				id: session.session.id,
+				impersonatedBy: session.session.impersonatedBy ?? null,
+				expiresAt: session.session.expiresAt,
+			},
+		},
 	};
 }
 
