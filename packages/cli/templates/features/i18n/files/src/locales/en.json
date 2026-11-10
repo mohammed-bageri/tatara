@@ -3,6 +3,7 @@
 		"VALIDATION_ERROR": "Invalid request",
 		"UNAUTHORIZED": "Authentication required",
 		"FORBIDDEN": "You do not have permission to do this",
+		"NOT_ORG_MEMBER": "You are not a member of this organization",
 		"PERMISSION_DENIED": "You do not have permission to do this",
 		"NOT_FOUND": "Not found",
 		"CONFLICT": "Already exists",

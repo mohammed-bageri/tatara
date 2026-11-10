@@ -152,7 +152,7 @@ export function createAuthInstance<O extends BetterAuthOptions>(
 			const vouched =
 				principal.kind === "service" ? [principal.orgId] : (principal.orgs ?? undefined);
 			if (vouched && !vouched.includes(orgId))
-				throw new ForbiddenError("Not a member of this organization");
+				throw new ForbiddenError("Not a member of this organization", { code: "NOT_ORG_MEMBER" });
 			if (principal.kind !== "service") {
 				const { adapter } = await (
 					auth as unknown as { $context: Promise<{ adapter: MemberLookup }> }
@@ -164,7 +164,8 @@ export function createAuthInstance<O extends BetterAuthOptions>(
 						{ field: "userId", value: principal.userId },
 					],
 				});
-				if (!member && !vouched) throw new ForbiddenError("Not a member of this organization");
+				if (!member && !vouched)
+					throw new ForbiddenError("Not a member of this organization", { code: "NOT_ORG_MEMBER" });
 				c.set("principal", { ...principal, orgId, orgRole: member?.role ?? null });
 			}
 			await next();

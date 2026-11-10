@@ -113,9 +113,9 @@ describe("requireOrg", () => {
 		const none = await app().request("/org", { headers });
 		expect(none.status).toBe(400);
 		expect(await none.json()).toMatchObject({ code: "ORG_REQUIRED" });
-		expect(
-			(await app().request("/org", { headers: { ...headers, "x-org-id": orgId } })).status,
-		).toBe(403);
+		const outsiderRes = await app().request("/org", { headers: { ...headers, "x-org-id": orgId } });
+		expect(outsiderRes.status).toBe(403);
+		expect(await outsiderRes.json()).toMatchObject({ code: "NOT_ORG_MEMBER" });
 	});
 
 	it("takes the org from the path when told to, and the header can't override it", async () => {
