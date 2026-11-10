@@ -94,7 +94,7 @@
 				"import": "@tatara/authz/commands",
 				"factory": "authzCommands",
 				"args": {
-					"authz": "#core/authz/index"
+					"authz": "#modules/authz/services/authz"
 				}
 			}
 		],
@@ -103,7 +103,7 @@
 				"import": "@tatara/authz/commands",
 				"factory": "authzSeeds",
 				"args": {
-					"authz": "#core/authz/index"
+					"authz": "#modules/authz/services/authz"
 				}
 			}
 		]

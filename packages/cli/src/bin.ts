@@ -16,6 +16,7 @@ import { tinker } from "./commands/tinker.ts";
 import { biomeFormat, printUpgrade, upgrade } from "./commands/upgrade.ts";
 import { verify } from "./commands/verify.ts";
 import { OptionsError } from "./engine/resolve.ts";
+import { FEATURES } from "./features/index.ts";
 import { GENERATORS, GeneratorError, type GeneratorKind, generate } from "./generators/index.ts";
 import { cliVersion } from "./paths.ts";
 import { loadProject, NotATataraProject } from "./project/config.ts";
@@ -35,7 +36,13 @@ program
 		"better-auth | none (keycloak = better-auth with --auth-methods keycloak)",
 	)
 	.option("--auth-methods <list>", "email-otp,phone-otp,password,orgs (better-auth)")
-	.option("--addons <list>", "authz,jobs,admin,storage,email,i18n")
+	.option(
+		"--addons <list>",
+		Object.values(FEATURES)
+			.filter((f) => f.kind === "addon")
+			.map((f) => f.id)
+			.join(","),
+	)
 	.option("--pm <pm>", "pnpm | npm | bun")
 	.option("-y, --yes", "skip prompts and use flags/defaults")
 	.option("--no-install", "do not install dependencies")

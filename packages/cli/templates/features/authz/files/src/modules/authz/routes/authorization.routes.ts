@@ -1,5 +1,5 @@
 import { authorizationRoutes } from "@tatara/authz";
-import { authz } from "#core/authz/index";
+import { authz } from "#modules/authz/services/authz";
 import type { AppEnv } from "#core/http/context";
 import { defineRoutes } from "#core/http/routes";
 // tatara:slot imports

@@ -52,12 +52,19 @@ export async function check(project: Project = loadProject()): Promise<Violation
 				});
 			}
 			const target = /^#modules\/([^/]+)\/([^/]+)/.exec(spec);
-			if (moduleName && target && target[1] !== moduleName && target[2] !== "services") {
+			// a module's public surface: its services and its tables (joins and foreign keys)
+			if (
+				moduleName &&
+				target &&
+				target[1] !== moduleName &&
+				target[2] !== "services" &&
+				target[2] !== "db"
+			) {
 				violations.push({
 					file,
 					line,
 					rule: "cross-module-imports",
-					message: `use ${target[1]}'s services, not "${spec}"`,
+					message: `use ${target[1]}'s services or tables, not "${spec}"`,
 				});
 			}
 		}

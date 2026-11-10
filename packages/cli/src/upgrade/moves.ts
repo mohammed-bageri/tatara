@@ -23,7 +23,24 @@ export const MERGED_IN_0_10: Record<string, string> = {
 	"src/core/auth/principal.ts": "src/modules/users/services/auth.ts",
 };
 
+/** Tables never sit in core: authz and events became modules in 0.20. */
+export const MOVED_IN_0_20: Record<string, string> = {
+	"src/core/authz/index.ts": "src/modules/authz/services/authz.ts",
+	"src/core/authz/system-roles.ts": "src/modules/authz/services/system-roles.ts",
+	"src/core/authz/db/authz.schema.ts": "src/modules/authz/db/authz.schema.ts",
+	"src/modules/users/routes/authorization.routes.ts":
+		"src/modules/authz/routes/authorization.routes.ts",
+	"src/core/events/index.ts": "src/modules/events/services/events.ts",
+	"src/core/events/db/events.schema.ts": "src/modules/events/db/events.schema.ts",
+	"src/core/events/consumers/dispatch.ts": "src/modules/events/consumers/dispatch.ts",
+	"src/core/events/schedules/prune.ts": "src/modules/events/schedules/prune.ts",
+	"src/core/events/schedules/reconcile.ts": "src/modules/events/schedules/reconcile.ts",
+	"src/core/events/schedules/relay.ts": "src/modules/events/schedules/relay.ts",
+	"src/core/events/schedules/retry.ts": "src/modules/events/schedules/retry.ts",
+};
+
 /** Where this CLI generates what used to be at `path` (the path itself if it never moved). */
 export function currentPath(path: string): string {
-	return MOVED_IN_0_10[path] ?? path;
+	const moved = MOVED_IN_0_10[path] ?? path;
+	return MOVED_IN_0_20[moved] ?? moved;
 }

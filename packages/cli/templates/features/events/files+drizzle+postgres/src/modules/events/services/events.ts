@@ -1,7 +1,7 @@
 import { createEvents } from "@tatara/events";
 import { drizzleEventStore } from "@tatara/events/drizzle";
 import { db, type Executor } from "#core/db/client";
-import { domainEventDeliveries, domainEvents } from "#core/events/db/events.schema";
+import { domainEventDeliveries, domainEvents } from "#modules/events/db/events.schema";
 import { jobs } from "#core/jobs/index";
 import { logger } from "#core/logging/logger";
 import { events as definitions } from "#generated/events";

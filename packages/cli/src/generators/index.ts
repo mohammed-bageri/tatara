@@ -62,7 +62,7 @@ function guardSlots(project: Project, n: Names): SlotFill[] {
 	const fills: SlotFill[] = [];
 	const add = (slot: string, content: string) => fills.push({ slot, content, order: fills.length });
 	if (project.has("authz")) {
-		add("imports", 'import { requirePermission } from "#core/authz/index";');
+		add("imports", 'import { requirePermission } from "#modules/authz/services/authz";');
 		// with organizations, each request names the org it acts in before permissions are checked
 		const orgs = project.has("auth-orgs");
 		if (orgs) add("imports", 'import { requireOrg } from "#modules/users/services/auth";');

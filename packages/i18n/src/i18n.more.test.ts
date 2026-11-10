@@ -211,3 +211,41 @@ describe("context and language codes", () => {
 		expect(app18n.translator("AR")("common.trigger")).toBe("في التاريخ");
 	});
 });
+
+describe("searchNamespaces", () => {
+	const i18n = createI18n({
+		defaultLanguage: "en",
+		searchNamespaces: true,
+		dictionaries: {
+			en: {
+				errors: { NOT_FOUND: "Not found" },
+				orders: { errors: { NOT_IN_STOCK: "Out of stock" } },
+				shop: { errors: { CLOSED: "Closed" } },
+			},
+			ar: { shop: { errors: { CLOSED: "مغلق" } } },
+		},
+	});
+
+	it("finds a key in a namespace when it isn't at the top level", () => {
+		expect(i18n.t("en", "errors.NOT_IN_STOCK")).toBe("Out of stock");
+		expect(i18n.t("en", "errors.NOT_FOUND")).toBe("Not found");
+	});
+
+	it("searches every namespace in the language before the default language", () => {
+		expect(i18n.t("ar", "errors.CLOSED")).toBe("مغلق");
+		expect(i18n.t("ar", "errors.NOT_IN_STOCK")).toBe("Out of stock");
+	});
+
+	it("leaves namespaced keys and misses alone", () => {
+		expect(i18n.t("en", "orders:errors.CLOSED", "fallback")).toBe("fallback");
+		expect(i18n.t("en", "errors.NOPE", "fallback")).toBe("fallback");
+	});
+
+	it("is off by default", () => {
+		const plain = createI18n({
+			defaultLanguage: "en",
+			dictionaries: { en: { orders: { errors: { NOT_IN_STOCK: "Out of stock" } } } },
+		});
+		expect(plain.t("en", "errors.NOT_IN_STOCK", "fallback")).toBe("fallback");
+	});
+});

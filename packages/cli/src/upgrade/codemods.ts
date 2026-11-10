@@ -14,6 +14,7 @@ import { httpPackage } from "./codemods/http-package.ts";
 import { jobsDrivers } from "./codemods/jobs-drivers.ts";
 import { notifierRoles } from "./codemods/notifier-roles.ts";
 import { packageCommands } from "./codemods/package-commands.ts";
+import { tablesInModules } from "./codemods/tables-in-modules.ts";
 import type { UpgradeContext } from "./context.ts";
 
 /**
@@ -46,4 +47,5 @@ export const CODEMODS: readonly Codemod[] = [
 	deployLedger,
 	authzRoles,
 	notifierRoles,
+	tablesInModules,
 ];

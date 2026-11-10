@@ -1,6 +1,6 @@
 import { DEFAULT_ORG_ID, SYSTEM_ORG_ID } from "@tatara/authz";
-import { authz } from "#core/authz/index";
-import type { SystemRoleKey } from "#core/authz/system-roles";
+import { authz } from "#modules/authz/services/authz";
+import type { SystemRoleKey } from "#modules/authz/services/system-roles";
 import type { PermissionKey } from "#generated/permissions";
 
 export interface TestAccess {
