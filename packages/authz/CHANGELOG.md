@@ -1,5 +1,14 @@
 # @tatara/authz
 
+## 0.10.1
+
+### Patch Changes
+
+- e3b78b2: 4xx errors take `(message?, { code?, details? })`: a specific code for the client (translated as `errors.<code>`), and details. NotFoundError's argument is its message now ("Job not found"); `tatara upgrade` rewrites existing calls (0.21 codemod). `realtime.attach(server, { channels, checkPermission, featureAllowed })` takes the channel checks, for apps whose authz lives in a module.
+- Updated dependencies [e3b78b2]
+  - @tatara/http@0.4.0
+  - @tatara/auth@0.3.2
+
 ## 0.10.0
 
 ### Minor Changes
