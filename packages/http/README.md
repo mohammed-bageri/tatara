@@ -46,6 +46,8 @@ ZodError is answered as a ValidationError.
 
 - `createValidationHook({ message: "first-issue", status: 400, detail })` for `defaultHook`;
   `validationHook` is the default (generic message, `{ path, message, code }` details).
+- `corsOrigin(origins)` for Hono's `cors({ origin })`: exact origins plus `https://*.example.com`, where
+  `*` is one label; `corsOrigin(origins, { nestedSubdomains: true })` lets `*` match `a.b.example.com` too.
 - `rejectCrossSite({ trusted: corsOrigin(origins), skip, onRefused })` refuses writes from untrusted
   browser origins (403 `CROSS_SITE_REQUEST_REFUSED`).
 - `rateLimit`, `requestTimeout`, `clientIp` / `trustedClientIp`, `uuidParams("orgId", "id")`, `isUuid`.

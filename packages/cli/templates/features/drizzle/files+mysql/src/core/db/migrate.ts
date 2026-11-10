@@ -1,1 +1,1 @@
-export { migrateDatabase } from "@tatara/db/drizzle-mysql";
+export { migrateDatabase, migrationStatus } from "@tatara/db/drizzle-mysql";

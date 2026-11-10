@@ -126,6 +126,8 @@ interface Contribution {
 	factory: string;
 	/** argument name → the app module that exports it */
 	args: Record<string, string>;
+	/** args passed only when their module exports them (an app without one still syncs) */
+	optional?: string[];
 }
 
 type ContributionKind = "commands" | "seeds";
@@ -163,12 +165,42 @@ async function contributions(project: Project, kind: ContributionKind): Promise<
 	}
 	// the app may keep an instance somewhere other than the package's default (tatara.json "paths")
 	const paths = project.config.paths ?? {};
-	return out.map((c) => ({
-		...c,
-		args: Object.fromEntries(
-			Object.entries(c.args).map(([arg, spec]) => [arg, paths[spec] ?? spec]),
-		),
-	}));
+	const kept: Contribution[] = [];
+	for (const c of out) {
+		const args: Record<string, string> = {};
+		for (const [arg, spec] of Object.entries(c.args)) {
+			const where = paths[spec] ?? spec;
+			if (c.optional?.includes(arg) && !(await exportsName(project.root, where, arg))) continue;
+			args[arg] = where;
+		}
+		kept.push({ ...c, args });
+	}
+	return kept;
+}
+
+/** Whether the app module `#x/y` (src/x/y.ts) exports `name`, read from its source. */
+async function exportsName(root: string, spec: string, name: string): Promise<boolean> {
+	if (!spec.startsWith("#")) return false;
+	const base = join(root, "src", spec.slice(1));
+	const file = [`${base}.ts`, join(base, "index.ts")].find((f) => existsSync(f));
+	if (!file) return false;
+	const text = (await readFile(file, "utf8")).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+	const n = name.replace(/\$/g, "\\$");
+	return (
+		new RegExp(`export\\s+(?:async\\s+)?(?:function\\*?|const|let|var|class)\\s+${n}\\b`).test(
+			text,
+		) ||
+		[...text.matchAll(/export\s*\{([^}]*)\}/g)].some((m) =>
+			(m[1] ?? "").split(",").some(
+				(part) =>
+					part
+						.trim()
+						.split(/\s+as\s+/)
+						.pop()
+						?.trim() === name,
+			),
+		)
+	);
 }
 
 /**

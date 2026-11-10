@@ -108,8 +108,12 @@
 					"env": "#core/config/env",
 					"migrateDatabase": "#core/db/migrate",
 					"dropAllTables": "#core/db/admin",
-					"seeds": "#generated/seeds"
-				}
+					"seeds": "#generated/seeds",
+					"migrationStatus": "#core/db/migrate"
+				},
+				"optional": [
+					"migrationStatus"
+				]
 			}
 		]
 	}
