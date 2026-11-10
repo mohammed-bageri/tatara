@@ -35,6 +35,10 @@ describe("client", () => {
 	app.post("/echo", async (c) =>
 		c.json({ got: await c.req.json(), auth: c.req.header("authorization") ?? null }),
 	);
+	app.delete("/remove", async (c) => {
+		const body = await c.req.json().catch(() => null);
+		return c.json({ method: "DELETE", body });
+	});
 	app.get("/text", (c) => c.text("plain"));
 	const api = client(app);
 
@@ -50,6 +54,20 @@ describe("client", () => {
 
 	it("keeps a non-JSON body as text", async () => {
 		expect((await api.get("/text")).body).toBe("plain");
+	});
+
+	it("sends DELETE with body", async () => {
+		const res = await api.delete<{ method: string; body: unknown }>("/remove", {
+			body: { ban: true },
+		});
+		expect(res.status).toBe(200);
+		expect(res.body).toEqual({ method: "DELETE", body: { ban: true } });
+	});
+
+	it("sends DELETE without body", async () => {
+		const res = await api.delete<{ method: string; body: null }>("/remove");
+		expect(res.status).toBe(200);
+		expect(res.body).toEqual({ method: "DELETE", body: null });
 	});
 });
 
