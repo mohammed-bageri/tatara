@@ -34,7 +34,8 @@ async function activeMembership(auth: SessionAuth, userId: string, orgId: unknow
 
 /**
  * The better-auth session (cookie or bearer token) as a principal; none while the admin plugin's ban
- * is in force (better-auth keeps a banned user's live sessions). Roles come from the plugin's `role`.
+ * is in force (better-auth keeps a banned user's live sessions). Roles come from the plugin's `role`;
+ * `claims` holds the session user (email, name, the app's additional fields).
  */
 export async function sessionPrincipal(
 	auth: SessionAuth,
@@ -54,7 +55,8 @@ export async function sessionPrincipal(
 			.map((role) => role.trim())
 			.filter(Boolean),
 		kind: "user",
-		claims: {},
+		// the identity's attributes (email, name, the app's own user fields), as a token carries claims
+		claims: { ...(session.user as Record<string, unknown>) },
 	};
 }
 
