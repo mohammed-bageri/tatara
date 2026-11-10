@@ -394,3 +394,44 @@ export const approvalSubjects: ApprovalSubject[] = [approvalSubjects_0, approval
 		await expect(sync(loadProject(root))).rejects.toThrow(/declared twice/);
 	});
 });
+
+describe("sync: identifier collisions", () => {
+	it("keeps module names in identifiers even when they match kind names", async () => {
+		const root = app({
+			"package.json": JSON.stringify({ name: "app", dependencies: {} }),
+			"tatara.json": JSON.stringify({
+				version: "0.14.0",
+				name: "app",
+				orm: "drizzle",
+				database: "postgres",
+				auth: "none",
+				authMethods: [],
+				addons: ["jobs"],
+				packageManager: "pnpm",
+			}),
+			"src/modules/events/consumers/dispatch.ts": "export default {};\n",
+			"src/modules/notifications/consumers/dispatch.ts": "export default {};\n",
+			"src/modules/events/routes/event.routes.ts": "export default {};\n",
+			"src/modules/notifications/routes/notification.routes.ts": "export default {};\n",
+		});
+		await sync(loadProject(root));
+		const consumers = generated(root, "consumers.ts");
+		expect(consumers).toContain(
+			'import consumer_modules_events_dispatch from "#modules/events/consumers/dispatch";',
+		);
+		expect(consumers).toContain(
+			'import consumer_modules_notifications_dispatch from "#modules/notifications/consumers/dispatch";',
+		);
+		// the two consumers should have different identifiers
+		expect(consumers.match(/consumer_modules_events_dispatch/g)?.length).toBeGreaterThan(0);
+		expect(consumers.match(/consumer_modules_notifications_dispatch/g)?.length).toBeGreaterThan(0);
+
+		const routes = generated(root, "routes.ts");
+		expect(routes).toContain(
+			'import routes_modules_events_event_routes from "#modules/events/routes/event.routes";',
+		);
+		expect(routes).toContain(
+			'import routes_modules_notifications_notification_routes from "#modules/notifications/routes/notification.routes";',
+		);
+	});
+});

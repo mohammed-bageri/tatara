@@ -14,27 +14,33 @@ export function specifier(path: string): string {
 }
 
 function identifier(path: string, prefix: string): string {
+	const kinds = [
+		"routes",
+		"commands",
+		"consumers",
+		"schedules",
+		"permissions",
+		"db",
+		"emails",
+		"notifications",
+		"channels",
+		"events",
+		"event-subscribers",
+	];
 	const parts = path
 		.replace(/^src\//, "")
 		.replace(/\.ts$/, "")
-		.split("/")
-		.filter(
-			(p) =>
-				![
-					"routes",
-					"commands",
-					"consumers",
-					"schedules",
-					"permissions",
-					"db",
-					"emails",
-					"notifications",
-					"channels",
-					"events",
-					"event-subscribers",
-				].includes(p),
-		);
-	const raw = `${prefix}_${parts.join("_")}`.replace(/[^A-Za-z0-9_]/g, "_");
+		.split("/");
+	// drop only the kind folder at its expected position: modules/<name>/<kind> or core/<area>/<kind>
+	const kindPart = parts[2];
+	const filtered =
+		parts.length > 2 &&
+		(parts[0] === "modules" || parts[0] === "core") &&
+		kindPart !== undefined &&
+		kinds.includes(kindPart)
+			? [...parts.slice(0, 2), ...parts.slice(3)]
+			: parts;
+	const raw = `${prefix}_${filtered.join("_")}`.replace(/[^A-Za-z0-9_]/g, "_");
 	return raw.replace(/_+/g, "_");
 }
 

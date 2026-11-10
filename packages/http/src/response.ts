@@ -103,9 +103,15 @@ type Int = z.ZodNumber;
 type SizeQuery<S extends string> = { page: z.ZodDefault<z.ZodCoercedNumber> } & {
 	[K in S]: z.ZodDefault<z.ZodCoercedNumber>;
 };
-type Meta<S extends string> = { page: number; total: number; totalPages: number } & {
+type Meta<S extends string, N extends boolean = false> = {
+	page: number;
+	total: number;
+	totalPages: number;
+} & {
 	[K in S]: number;
-} & { hasNext?: boolean; hasPrev?: boolean };
+} & (N extends true
+		? { hasNext: boolean; hasPrev: boolean }
+		: { hasNext?: never; hasPrev?: never });
 
 /**
  * Offset pagination in the app's own shape: its query schema, meta schema, list schema and
@@ -113,6 +119,64 @@ type Meta<S extends string> = { page: number; total: number; totalPages: number 
  * `createPagination({ sizeKey: "limit", navigation: true, emptyTotalPages: 0 })` gives
  * `{ page, limit, total, totalPages, hasNext, hasPrev }`.
  */
+export function createPagination<S extends string = "pageSize">(
+	options: PaginationOptions<S> & { navigation: true },
+): {
+	querySchema: z.ZodObject<SizeQuery<S>>;
+	metaSchema: z.ZodObject<
+		{ page: Int; total: Int; totalPages: Int; hasNext: z.ZodBoolean; hasPrev: z.ZodBoolean } & {
+			[K in S]: Int;
+		}
+	>;
+	schema<T extends z.ZodType>(
+		item: T,
+	): z.ZodObject<{
+		success: z.ZodLiteral<true>;
+		data: z.ZodArray<T>;
+		meta: z.ZodObject<
+			{ page: Int; total: Int; totalPages: Int; hasNext: z.ZodBoolean; hasPrev: z.ZodBoolean } & {
+				[K in S]: Int;
+			}
+		>;
+	}>;
+	meta(page: number, size: number, total: number): Meta<S, true>;
+	offset(page: number, size: number): number;
+	paginated<T, X extends object = Record<never, never>>(
+		data: T[],
+		position: { page: number; total: number } & { [K in S]: number },
+		extra?: { message?: string; meta?: X },
+	): {
+		success: true;
+		data: T[];
+		meta: Meta<S, true> & X;
+		message?: string;
+	};
+};
+export function createPagination<S extends string = "pageSize">(
+	options?: PaginationOptions<S> & { navigation?: false },
+): {
+	querySchema: z.ZodObject<SizeQuery<S>>;
+	metaSchema: z.ZodObject<{ page: Int; total: Int; totalPages: Int } & { [K in S]: Int }>;
+	schema<T extends z.ZodType>(
+		item: T,
+	): z.ZodObject<{
+		success: z.ZodLiteral<true>;
+		data: z.ZodArray<T>;
+		meta: z.ZodObject<{ page: Int; total: Int; totalPages: Int } & { [K in S]: Int }>;
+	}>;
+	meta(page: number, size: number, total: number): Meta<S, false>;
+	offset(page: number, size: number): number;
+	paginated<T, X extends object = Record<never, never>>(
+		data: T[],
+		position: { page: number; total: number } & { [K in S]: number },
+		extra?: { message?: string; meta?: X },
+	): {
+		success: true;
+		data: T[];
+		meta: Meta<S, false> & X;
+		message?: string;
+	};
+};
 export function createPagination<S extends string = "pageSize">(
 	options: PaginationOptions<S> = {},
 ) {
@@ -127,25 +191,40 @@ export function createPagination<S extends string = "pageSize">(
 		[sizeKey]: z.coerce.number().int().min(1).max(maxSize).default(defaultSize),
 	} as SizeQuery<S>);
 
-	const metaSchema = z
-		.object({
-			page: z.number().int(),
-			[sizeKey]: z.number().int(),
-			total: z.number().int(),
-			totalPages: z.number().int(),
-			...(navigation ? { hasNext: z.boolean(), hasPrev: z.boolean() } : {}),
-		} as Record<string, Int | z.ZodBoolean>)
-		.openapi(options.name ?? "PaginationMeta");
+	const metaBase = {
+		page: z.number().int(),
+		[sizeKey]: z.number().int(),
+		total: z.number().int(),
+		totalPages: z.number().int(),
+	};
 
-	function meta(page: number, size: number, total: number): Meta<S> {
+	const metaSchema = navigation
+		? z
+				.object({
+					...metaBase,
+					hasNext: z.boolean(),
+					hasPrev: z.boolean(),
+				})
+				.openapi(options.name ?? "PaginationMeta")
+		: z.object(metaBase as Record<string, Int>).openapi(options.name ?? "PaginationMeta");
+
+	function meta(page: number, size: number, total: number) {
 		const totalPages = Math.max(emptyTotalPages, Math.ceil(total / size));
-		return {
-			page,
-			[sizeKey]: size,
-			total,
-			totalPages,
-			...(navigation ? { hasNext: page < totalPages, hasPrev: page > 1 } : {}),
-		} as Meta<S>;
+		return navigation
+			? ({
+					page,
+					[sizeKey]: size,
+					total,
+					totalPages,
+					hasNext: page < totalPages,
+					hasPrev: page > 1,
+				} as Meta<S, true>)
+			: ({
+					page,
+					[sizeKey]: size,
+					total,
+					totalPages,
+				} as Meta<S, false>);
 	}
 
 	return {
@@ -168,7 +247,7 @@ export function createPagination<S extends string = "pageSize">(
 			return {
 				success: true as const,
 				data,
-				meta: { ...meta(position.page, size, position.total), ...extra?.meta } as Meta<S> & X,
+				meta: { ...meta(position.page, size, position.total), ...extra?.meta } as any,
 				...(extra?.message === undefined ? {} : { message: extra.message }),
 			};
 		},
