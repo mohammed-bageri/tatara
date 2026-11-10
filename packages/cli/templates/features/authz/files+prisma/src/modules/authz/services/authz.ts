@@ -1,6 +1,6 @@
 import { createAuthz } from "@tatara/authz";
 import { prismaAuthzStore } from "@tatara/authz/prisma";
-import { SYSTEM_ROLES } from "#core/authz/system-roles";
+import { SYSTEM_ROLES } from "#modules/authz/services/system-roles";
 import { db } from "#core/db/client";
 import { catalog, type PermissionKey } from "#generated/permissions";
 

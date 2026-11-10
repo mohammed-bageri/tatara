@@ -38,6 +38,11 @@ export interface I18nOptions {
 	dictionaries: Record<string, Dictionary>;
 	defaultLanguage: string;
 	detection?: LanguageDetectionOptions;
+	/**
+	 * A key without a namespace that isn't at the top level is looked up in each namespace too, so
+	 * `errors.NOT_IN_STOCK` finds `orders.errors.NOT_IN_STOCK` (modules own their strings).
+	 */
+	searchNamespaces?: boolean;
 }
 
 type Node = string | Dictionary | undefined;
@@ -67,7 +72,12 @@ function interpolate(text: string, vars: TranslateVars): string {
 	});
 }
 
-export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I18nOptions) {
+export function createI18n({
+	dictionaries,
+	defaultLanguage,
+	detection = {},
+	searchNamespaces = false,
+}: I18nOptions) {
 	const languages = Object.keys(dictionaries);
 	const storage = new AsyncLocalStorage<string>();
 	const pluralRules = new Map<string, Intl.PluralRules>();
@@ -98,26 +108,45 @@ export function createI18n({ dictionaries, defaultLanguage, detection = {} }: I1
 		return supportedLanguage(language) ?? defaultLanguage;
 	}
 
+	/** `key` in one language's dictionary: context and plural forms first. */
+	function findIn(
+		lang: string,
+		key: string,
+		count: unknown,
+		context?: unknown,
+	): string | undefined {
+		const dict = dictionaries[lang];
+		// a context ("male", "weekly") tries `key_<context>` before `key`
+		const bases = typeof context === "string" && context ? [`${key}_${context}`, key] : [key];
+		for (const base of bases) {
+			if (typeof count === "number") {
+				const forms = count === 0 ? ["zero", plural(lang, count)] : [plural(lang, count)];
+				for (const form of forms) {
+					const text = lookup(dict, `${base}_${form}`);
+					if (typeof text === "string") return text;
+				}
+			}
+			const text = lookup(dict, base);
+			if (typeof text === "string") return text;
+		}
+		return undefined;
+	}
+
 	function find(
 		language: string,
 		key: string,
 		count: unknown,
 		context?: unknown,
 	): string | undefined {
-		// a context ("male", "weekly") tries `key_<context>` before `key`
-		const bases = typeof context === "string" && context ? [`${key}_${context}`, key] : [key];
 		for (const lang of language === defaultLanguage ? [language] : [language, defaultLanguage]) {
+			const text = findIn(lang, key, count, context);
+			if (text !== undefined) return text;
 			const dict = dictionaries[lang];
-			for (const base of bases) {
-				if (typeof count === "number") {
-					const forms = count === 0 ? ["zero", plural(lang, count)] : [plural(lang, count)];
-					for (const form of forms) {
-						const text = lookup(dict, `${base}_${form}`);
-						if (typeof text === "string") return text;
-					}
-				}
-				const text = lookup(dict, base);
-				if (typeof text === "string") return text;
+			if (!searchNamespaces || !dict || key.includes(":")) continue;
+			for (const ns of Object.keys(dict)) {
+				if (typeof dict[ns] === "string") continue;
+				const nested = findIn(lang, `${ns}:${key}`, count, context);
+				if (nested !== undefined) return nested;
 			}
 		}
 		return undefined;

@@ -6,7 +6,7 @@ const AUTHZ_AGENTS = `## Permissions (authz)
   satisfies a narrower one). Each module declares its resources and the grants built-in roles get
   in \`permissions/<name>.permissions.ts\` (\`definePermissions\` from \`@tatara/authz\`); \`tatara sync\` merges them into a
   typed catalog.
-- Guard routes with \`middleware: [requirePermission("project:read")]\` from \`#core/authz/index\`
+- Guard routes with \`middleware: [requirePermission("project:read")]\` from \`#modules/authz/services/authz\`
   and declare \`security: [{ bearerAuth: ["project:read"] }]\`. For scoped actions, call
   \`resolveScope(principal, "doc:read")\` in the service and filter rows by the returned scope.
 - Effective permissions = grants of the caller's roles + grant overlays − deny overlays. Deny
@@ -15,7 +15,7 @@ const AUTHZ_AGENTS = `## Permissions (authz)
 - better-auth's member role is membership only (\`owner\` or \`member\`): \`authzPlugin\` in
   \`src/modules/users/services/auth.ts\` refuses others and gives the creator \`admin\`.
 - Custom roles and grant overlays can never grant \`role\`, \`member\` or \`audit_log\`.
-- Built-in roles live in \`src/core/authz/system-roles.ts\`. \`authz:sync-permissions\` brings the database
+- Built-in roles live in \`src/modules/authz/services/system-roles.ts\`. \`authz:sync-permissions\` brings the database
   in line with them; \`deploy\` runs it every deploy, \`db:seed\` locally.
 - In tests: \`asUser({ permissions: ["project:read"] })\` or \`asUser({ systemRoles: ["admin"] })\`.
 `;
@@ -27,7 +27,7 @@ export const authz: Feature = {
 	dependencies: ["@tatara/authz"],
 	slots: [
 		{
-			file: "src/core/authz/system-roles.ts",
+			file: "src/modules/authz/services/system-roles.ts",
 			slot: "admin",
 			unless: ["auth-keycloak"],
 			content:
@@ -35,7 +35,7 @@ export const authz: Feature = {
 		},
 		{
 			// Keycloak's realm roles are the app's roles: a token with "admin" is the admin
-			file: "src/core/authz/system-roles.ts",
+			file: "src/modules/authz/services/system-roles.ts",
 			slot: "admin",
 			when: ["auth-keycloak"],
 			content:
@@ -43,20 +43,20 @@ export const authz: Feature = {
 		},
 		{
 			// without organizations the app has one tenant; say so instead of falling back silently
-			file: "src/core/authz/index.ts",
+			file: "src/modules/authz/services/authz.ts",
 			slot: "options",
 			unless: ["auth-orgs"],
 			content: 'singleTenant: "default",',
 		},
 		{
 			// each request names the org it acts in
-			file: "src/modules/users/routes/authorization.routes.ts",
+			file: "src/modules/authz/routes/authorization.routes.ts",
 			slot: "route-options",
 			when: ["auth-orgs"],
 			content: "use: [requireOrg()],",
 		},
 		{
-			file: "src/modules/users/routes/authorization.routes.ts",
+			file: "src/modules/authz/routes/authorization.routes.ts",
 			slot: "imports",
 			when: ["auth-orgs"],
 			content: 'import { requireOrg } from "#modules/users/services/auth";',
@@ -283,7 +283,7 @@ export const events: Feature = {
   from \`@tatara/events\`); react in \`event-subscribers/<name>.ts\`
   (\`export default defineSubscriber({ name, event, handle })\`). \`tatara sync\` lists both.
 - Emit in the transaction that makes the change: \`events.emit(tx, invoicePaid, { payload, orgId,
-  aggregateId, actor })\` from \`#core/events/index\`. Inside \`events.transaction(fn)\` the event is
+  aggregateId, actor })\` from \`#modules/events/services/events\`. Inside \`events.transaction(fn)\` the event is
   published right after commit; in a plain \`db.transaction\` the relay schedule picks it up within
   seconds. A rollback leaves no event. \`events.afterCommit(hook)\` runs work after commit only.
 - Delivery is at-least-once, one delivery per (event, subscriber), retried alone with backoff and
@@ -411,7 +411,7 @@ export const admin: Feature = {
 				'if (name === "admin") app.use(`${API_PREFIX}/*`, except(`${API_PREFIX}/auth/*`, requireRole("staff")));',
 		},
 		{
-			file: "src/core/authz/system-roles.ts",
+			file: "src/modules/authz/services/system-roles.ts",
 			slot: "roles",
 			content:
 				'{ key: "staff", name: "Staff", description: "Internal staff: platform permissions on the admin app.", heldBy: "identity" },',
@@ -580,7 +580,7 @@ export const notifications: Feature = {
 			slot: "imports",
 			when: ["auth-orgs", "authz"],
 			content:
-				'import { authz, checkPermission } from "#core/authz/index";\nimport type { PermissionKey } from "#generated/permissions";',
+				'import { authz, checkPermission } from "#modules/authz/services/authz";\nimport type { PermissionKey } from "#generated/permissions";',
 		},
 		{
 			file: "src/modules/notifications/services/notifier.ts",

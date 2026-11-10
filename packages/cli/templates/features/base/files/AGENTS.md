@@ -26,7 +26,8 @@ Rules enforced by `tatara check` (part of lint):
 
 - Import with `#core/…`, `#modules/…`, `#apps/…`, `#generated/…`, `#tests/…`; no `../` imports.
 - `src/core` never imports from `src/modules`.
-- A module uses another module only through its `services/`.
+- A module uses another module only through its `services/` and its tables (`db/`: joins,
+  foreign keys). Everything else in a module is private.
 - Module routers never call `use("*")`; attach middleware per route or per path.
 - `process.env` is read only in `src/core/config/env.ts`.
 

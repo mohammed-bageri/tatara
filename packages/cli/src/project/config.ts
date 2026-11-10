@@ -26,7 +26,7 @@ export interface ProjectConfig {
 	ejected?: Record<string, string>;
 	/**
 	 * Where the app keeps what a package's commands and seeds import, when it isn't the default:
-	 * `{ "#core/authz/index": "#modules/authorization/index" }` (default path → the app's path).
+	 * `{ "#modules/authz/services/authz": "#modules/authorization/index" }` (default path → the app's path).
 	 */
 	paths?: Record<string, string>;
 	/** App-declared discovery kinds `tatara sync` lists into src/generated/<name>.ts */

@@ -67,7 +67,7 @@
 				"import": "@tatara/events/commands",
 				"factory": "eventsCommands",
 				"args": {
-					"events": "#core/events/index"
+					"events": "#modules/events/services/events"
 				}
 			}
 		]

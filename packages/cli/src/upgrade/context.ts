@@ -31,6 +31,8 @@ export interface UpgradeContext {
 	write(path: string, text: string): Promise<void>;
 	/** Deletes a framework file the app never changed; a changed file is kept and reported. */
 	removeIfUnchanged(path: string): Promise<"removed" | "kept" | "missing">;
+	/** Deletes a file whose content was written elsewhere (a move). */
+	remove(path: string): Promise<void>;
 	/** Rewrites `from` and `from/...` import specifiers in src/ and tests/; returns files changed. */
 	rewriteImports(from: string, to: string): Promise<number>;
 	addDependency(name: string, range: string, opts?: { dev?: boolean }): Promise<void>;
@@ -87,6 +89,11 @@ export function createContext(
 		report,
 		read: (path) => readFile(abs(path), "utf8"),
 		write,
+		async remove(path) {
+			if (!existsSync(abs(path))) return;
+			if (!opts.dryRun) await rm(abs(path));
+			report.removed.push(path);
+		},
 		async removeIfUnchanged(path) {
 			if (!existsSync(abs(path))) return "missing";
 			const content = await readFile(abs(path), "utf8");

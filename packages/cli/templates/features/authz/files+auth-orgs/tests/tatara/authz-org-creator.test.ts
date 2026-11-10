@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { authz } from "#core/authz/index";
+import { authz } from "#modules/authz/services/authz";
 import { api } from "#tests/helpers/api";
 import { authenticate } from "#tests/helpers/auth";
 import { resetDatabase } from "#tests/helpers/db";

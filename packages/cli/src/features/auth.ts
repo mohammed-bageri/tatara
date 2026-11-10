@@ -445,7 +445,7 @@ export const authOrgs: Feature = {
 			slot: "imports",
 			when: ["authz"],
 			content:
-				'import { authzPlugin } from "@tatara/authz/better-auth";\nimport { authz } from "#core/authz/index";',
+				'import { authzPlugin } from "@tatara/authz/better-auth";\nimport { authz } from "#modules/authz/services/authz";',
 		},
 		{
 			file: "tests/helpers/auth.ts",
