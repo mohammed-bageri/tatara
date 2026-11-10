@@ -1,6 +1,6 @@
 # @tatara/i18n
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli). Dictionaries, `t()`, plurals,
+Part of [tatara](https://github.com/mohammed-bageri/tatara). Dictionaries, `t()`, plurals,
 language detection for Hono and localised zod messages. No i18n library underneath.
 
 ```ts

@@ -1,6 +1,6 @@
 # @tatara/realtime
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli).
+Part of [tatara](https://github.com/mohammed-bageri/tatara).
 
 socket.io for tatara apps: a client trades a single-use ticket (from an authenticated route) for a
 socket bound to its user and org. Every socket joins its user's and org's rooms; module channels

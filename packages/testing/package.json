@@ -47,11 +47,11 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/mohammed-bageri/tatara-cli.git",
+		"url": "git+https://github.com/mohammed-bageri/tatara.git",
 		"directory": "packages/testing"
 	},
-	"homepage": "https://github.com/mohammed-bageri/tatara-cli#readme",
+	"homepage": "https://github.com/mohammed-bageri/tatara#readme",
 	"bugs": {
-		"url": "https://github.com/mohammed-bageri/tatara-cli/issues"
+		"url": "https://github.com/mohammed-bageri/tatara/issues"
 	}
 }

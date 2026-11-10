@@ -1,6 +1,6 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
-	"$id": "https://raw.githubusercontent.com/mohammed-bageri/tatara-cli/main/schema/tatara.json",
+	"$id": "https://raw.githubusercontent.com/mohammed-bageri/tatara/main/schema/tatara.json",
 	"title": "tatara.json",
 	"description": "What a tatara app was created with; read by the tatara CLI's generators.",
 	"type": "object",

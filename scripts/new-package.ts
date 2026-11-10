@@ -51,11 +51,11 @@ const pkg = {
 	publishConfig: { access: "public" },
 	repository: {
 		type: "git",
-		url: "git+https://github.com/mohammed-bageri/tatara-cli.git",
+		url: "git+https://github.com/mohammed-bageri/tatara.git",
 		directory: `packages/${name}`,
 	},
-	homepage: "https://github.com/mohammed-bageri/tatara-cli#readme",
-	bugs: { url: "https://github.com/mohammed-bageri/tatara-cli/issues" },
+	homepage: "https://github.com/mohammed-bageri/tatara#readme",
+	bugs: { url: "https://github.com/mohammed-bageri/tatara/issues" },
 };
 
 const files: Record<string, string> = {
@@ -68,7 +68,7 @@ const files: Record<string, string> = {
 	"tsdown.config.ts": `import { defineConfig } from "tsdown";\nimport { libraryConfig } from "../../tsdown.base.ts";\n\nexport default defineConfig(libraryConfig({ index: "src/index.ts" }));\n`,
 	"src/index.ts": `/** @tatara/${name} */\nexport {};\n`,
 	"src/index.test.ts": `import { expect, it } from "vitest";\nimport * as api from "./index.ts";\n\nit("loads without side effects", () => {\n\texpect(api).toBeTypeOf("object");\n});\n`,
-	"README.md": `# @tatara/${name}\n\nPart of [tatara](https://github.com/mohammed-bageri/tatara-cli).\n`,
+	"README.md": `# @tatara/${name}\n\nPart of [tatara](https://github.com/mohammed-bageri/tatara).\n`,
 };
 for (const [file, text] of Object.entries(files)) {
 	mkdirSync(join(dir, file, ".."), { recursive: true });

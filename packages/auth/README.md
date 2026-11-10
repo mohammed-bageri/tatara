@@ -1,6 +1,6 @@
 # @tatara/auth
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli). The principal contract, guards,
+Part of [tatara](https://github.com/mohammed-bageri/tatara). The principal contract, guards,
 OpenAPI merge, dev outbox and test helpers for better-auth.
 
 ## createAuthInstance

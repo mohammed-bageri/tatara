@@ -1,6 +1,6 @@
 # @tatara/db
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli). Ids, seeds, database error
+Part of [tatara](https://github.com/mohammed-bageri/tatara). Ids, seeds, database error
 helpers, migration status, per-driver admin, `explain` and a REPL.
 
 | Import | What |

@@ -1,6 +1,6 @@
 # @tatara/ai
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli). `tatara new --addons ai` wires it up.
+Part of [tatara](https://github.com/mohammed-bageri/tatara). `tatara new --addons ai` wires it up.
 
 One AI client over Gemini and OpenAI: a default provider, a fallback when the default runs out,
 native PDF/image input, JSON mode, embeddings and per-call cost estimates. The SDKs are optional

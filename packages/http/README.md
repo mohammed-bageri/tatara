@@ -1,6 +1,6 @@
 # @tatara/http
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli). Plain Hono / OpenAPIHono setup,
+Part of [tatara](https://github.com/mohammed-bageri/tatara). Plain Hono / OpenAPIHono setup,
 errors, the response envelope, pagination, OpenAPI docs and route mounting.
 
 ## Errors
