@@ -1,5 +1,14 @@
 # @tatara/authz
 
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [cbe1757]
+  - @tatara/http@0.5.0
+  - @tatara/db@0.3.3
+  - @tatara/auth@0.3.3
+
 ## 0.10.1
 
 ### Patch Changes

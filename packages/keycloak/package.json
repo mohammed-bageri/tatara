@@ -31,7 +31,7 @@
 		"better-auth": "^1.7.8",
 		"jose": "^6.2.12",
 		"zod": "^4.6.7",
-		"@tatara/auth": "^0.3.2",
+		"@tatara/auth": "^0.3.3",
 		"@tatara/core": "^0.2.1"
 	},
 	"devDependencies": {
