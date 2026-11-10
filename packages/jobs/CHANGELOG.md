@@ -1,5 +1,12 @@
 # @tatara/jobs
 
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [1882c35]
+  - @tatara/core@0.2.0
+
 ## 0.5.1
 
 ### Patch Changes

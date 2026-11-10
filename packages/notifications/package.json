@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/notifications",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "tatara notifications: one notify for in-app, email, SMS and push, delivered through jobs",
 	"type": "module",
 	"license": "MIT",
@@ -32,7 +32,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"peerDependencies": {
-		"@tatara/core": "^0.1.3",
+		"@tatara/core": "^0.2.0",
 		"zod": "^4.6.7",
 		"drizzle-orm": "^0.45.4"
 	},

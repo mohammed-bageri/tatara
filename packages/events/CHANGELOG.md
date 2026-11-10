@@ -1,5 +1,12 @@
 # @tatara/events
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [1882c35]
+  - @tatara/core@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

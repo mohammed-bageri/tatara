@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/http",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "tatara HTTP: Hono app setup, errors, envelope, OpenAPI docs and route mounting",
 	"type": "module",
 	"license": "MIT",
@@ -28,7 +28,7 @@
 		"@hono/zod-openapi": "^1.6.3",
 		"@hono/node-server": "^2.1.5",
 		"@scalar/hono-api-reference": "^0.12.12",
-		"@tatara/core": "^0.1.2"
+		"@tatara/core": "^0.2.0"
 	},
 	"devDependencies": {
 		"hono": "^4.13.13",

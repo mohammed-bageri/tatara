@@ -1,5 +1,17 @@
 # @tatara/authz
 
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [22e28a7]
+- Updated dependencies [1882c35]
+- Updated dependencies [1882c35]
+  - @tatara/auth@0.3.0
+  - @tatara/core@0.2.0
+  - @tatara/http@0.3.0
+  - @tatara/db@0.3.1
+
 ## 0.9.1
 
 ### Patch Changes

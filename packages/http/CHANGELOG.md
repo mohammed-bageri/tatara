@@ -1,5 +1,16 @@
 # @tatara/http
 
+## 0.3.0
+
+### Minor Changes
+
+- 1882c35: `@tatara/http`: `tryDecodeCursor(schema, cursor)`, null for a cursor that doesn't parse.
+
+### Patch Changes
+
+- Updated dependencies [1882c35]
+  - @tatara/core@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes
