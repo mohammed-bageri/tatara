@@ -54,7 +54,8 @@ __PM_EXEC__ tatara add <add-on…>         # add jobs, cache, realtime… to thi
 - Responses use the envelope: `success(data)`, `paginated(items, page, pageSize, total)`.
   Errors are thrown as `AppError` subclasses (`NotFoundError`, `ConflictError`,
   `BusinessRuleError`, `ForbiddenError`, …) and become
-  `{ success: false, error, code, details }`.
+  `{ success: false, error, code, details }`. Give a case its own code when the client acts on it:
+  `new NotFoundError("Job not found", { code: "JOB_NOT_FOUND" })` (translated as `errors.JOB_NOT_FOUND`).
 - Route files are `routes/<name>.routes.ts` and default-export `defineRoutes({ app, basePath, router })`.
   They are found automatically; there is no central list to edit.
 - Long or live lists page by cursor: `cursorQuerySchema` for the query, fetch `limit + 1` rows after

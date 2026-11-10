@@ -72,6 +72,10 @@ async function serve(
 	options: Partial<Parameters<typeof createRealtime>[0]> = {},
 	// biome-ignore lint/suspicious/noExplicitAny: channels with any params and events
 	channels: readonly ChannelDefinition<string, any>[] = [survey],
+	attachChecks: Pick<
+		Parameters<typeof createRealtime>[0],
+		"checkPermission" | "featureAllowed"
+	> = {},
 ) {
 	const tickets = options.tickets ?? memoryTickets();
 	const realtime = createRealtime({
@@ -83,7 +87,7 @@ async function serve(
 		...options,
 	});
 	const server: Server = createServer();
-	await realtime.attach(server, { channels });
+	await realtime.attach(server, { channels, ...attachChecks });
 	await new Promise<void>((r) => server.listen(0, r));
 	cleanups.push(() => new Promise((r) => server.close(r)));
 	const url = `http://localhost:${(server.address() as AddressInfo).port}`;
@@ -273,6 +277,29 @@ describe("realtime", () => {
 		expect(calls).toEqual(["feature:reports", "permission:reports.read", "authorize:private"]);
 		expect(await codeFor({ userId: "broken", orgId: "o1" }, "reports.r1")).toBe("FORBIDDEN");
 		expect(await codeFor({ userId: "u1", orgId: "o1" }, "reports.r1")).toBeUndefined();
+	});
+
+	it("takes the channel checks at attach, for an app whose checks live in its modules", async () => {
+		const gated = defineChannel({
+			name: "board.{id}",
+			description: "",
+			events: { e: z.object({}) },
+			permission: "board.read",
+			feature: "boards",
+		});
+		const served = await serve({}, [gated], {
+			featureAllowed: (orgId) => orgId !== "free",
+			checkPermission: (who) => who.userId !== "guest",
+		});
+		const codeFor = async (who: SocketIdentity) =>
+			(
+				(await (await socketOf(served, who)).emitWithAck("subscribe", "board.b1")) as {
+					code?: string;
+				}
+			).code;
+		expect(await codeFor({ userId: "u1", orgId: "free" })).toBe("ENTITLEMENT_DENIED");
+		expect(await codeFor({ userId: "guest", orgId: "o1" })).toBe("PERMISSION_DENIED");
+		expect(await codeFor({ userId: "u1", orgId: "o1" })).toBeUndefined();
 	});
 
 	it("lets any org member subscribe to a channel without checks", async () => {

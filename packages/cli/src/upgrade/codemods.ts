@@ -8,6 +8,7 @@ import { corePackage } from "./codemods/core-package.ts";
 import { dbTesting } from "./codemods/db-testing.ts";
 import { deployLedger } from "./codemods/deploy-ledger.ts";
 import { emailV2 } from "./codemods/email-v2.ts";
+import { errorOptions } from "./codemods/error-options.ts";
 import { frameworkTests } from "./codemods/framework-tests.ts";
 import { httpLimits } from "./codemods/http-limits.ts";
 import { httpPackage } from "./codemods/http-package.ts";
@@ -48,4 +49,5 @@ export const CODEMODS: readonly Codemod[] = [
 	authzRoles,
 	notifierRoles,
 	tablesInModules,
+	errorOptions,
 ];

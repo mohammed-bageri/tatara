@@ -121,6 +121,11 @@ type AnyChannel = ChannelDefinition<string, any>;
 
 /** The app's realtime: attach it to the api server; publish from anywhere. */
 export function createRealtime(options: RealtimeOptions) {
+	// the channel checks: from the options, or from attach() when only the api has them
+	const checks = {
+		checkPermission: options.checkPermission,
+		featureAllowed: options.featureAllowed,
+	};
 	const ttlMs = options.ticketTtlMs ?? 60_000;
 	const log = options.logger;
 	const metrics = createMetrics(options.meter);
@@ -257,12 +262,12 @@ export function createRealtime(options: RealtimeOptions) {
 		try {
 			if (
 				definition.feature !== undefined &&
-				!(await options.featureAllowed?.(who.orgId, definition.feature))
+				!(await checks.featureAllowed?.(who.orgId, definition.feature))
 			)
 				return { ok: false, code: "ENTITLEMENT_DENIED" };
 			if (
 				definition.permission !== undefined &&
-				!(await options.checkPermission?.(who, definition.permission))
+				!(await checks.checkPermission?.(who, definition.permission))
 			)
 				return { ok: false, code: "PERMISSION_DENIED" };
 			if (definition.authorize && !(await definition.authorize(who, params)))
@@ -282,17 +287,24 @@ export function createRealtime(options: RealtimeOptions) {
 
 	async function attach(
 		server: HttpServer,
-		opts: { channels?: readonly AnyChannel[] } = {},
+		opts: {
+			channels?: readonly AnyChannel[];
+			/** the checks a channel's permission and feature need, when the app has them only here (its modules) */
+			checkPermission?: RealtimeOptions["checkPermission"];
+			featureAllowed?: RealtimeOptions["featureAllowed"];
+		} = {},
 	): Promise<void> {
 		if (options.driver === "noop") return;
 		if (io) throw new Error("realtime is already attached");
 		if (closed) throw new Error("realtime is closed");
+		if (opts.checkPermission) checks.checkPermission = opts.checkPermission;
+		if (opts.featureAllowed) checks.featureAllowed = opts.featureAllowed;
 		const list = opts.channels ?? [];
 		validateChannels(list);
 		for (const channel of list) {
-			if (channel.permission !== undefined && !options.checkPermission)
+			if (channel.permission !== undefined && !checks.checkPermission)
 				throw new Error(`Channel "${channel.name}" has a permission but no checkPermission is set`);
-			if (channel.feature !== undefined && !options.featureAllowed)
+			if (channel.feature !== undefined && !checks.featureAllowed)
 				throw new Error(`Channel "${channel.name}" has a feature but no featureAllowed is set`);
 		}
 		channels = list;

@@ -45,45 +45,55 @@ export class BusinessRuleError extends AppError {
 	}
 }
 
+/** A specific code for the client (and the translation key `errors.<code>`), and details. */
+export interface ErrorOptions {
+	code?: string;
+	details?: unknown;
+}
+
+/**
+ * A 4xx with a default code and message. A message of your own is shown as is; a code of your own
+ * is looked up as `errors.<code>` first (it names the case precisely), falling back to the message.
+ */
+function clientError(
+	status: ContentfulStatusCode,
+	defaultCode: string,
+	defaultMessage: string,
+	message: string | undefined,
+	options: ErrorOptions,
+): ConstructorParameters<typeof AppError> {
+	return [
+		status,
+		options.code ?? defaultCode,
+		message ?? defaultMessage,
+		options.details,
+		message === undefined || options.code !== undefined,
+	];
+}
+
 export class UnauthorizedError extends AppError {
-	constructor(message?: string) {
-		super(
-			401,
-			"UNAUTHORIZED",
-			message ?? "Authentication required",
-			undefined,
-			message === undefined,
-		);
+	constructor(message?: string, options: ErrorOptions = {}) {
+		super(...clientError(401, "UNAUTHORIZED", "Authentication required", message, options));
 	}
 }
 
 export class ForbiddenError extends AppError {
-	constructor(message?: string) {
+	constructor(message?: string, options: ErrorOptions = {}) {
 		super(
-			403,
-			"FORBIDDEN",
-			message ?? "You do not have permission to do this",
-			undefined,
-			message === undefined,
+			...clientError(403, "FORBIDDEN", "You do not have permission to do this", message, options),
 		);
 	}
 }
 
 export class NotFoundError extends AppError {
-	constructor(resource?: string) {
-		super(
-			404,
-			"NOT_FOUND",
-			`${resource ?? "Resource"} not found`,
-			undefined,
-			resource === undefined,
-		);
+	constructor(message?: string, options: ErrorOptions = {}) {
+		super(...clientError(404, "NOT_FOUND", "Resource not found", message, options));
 	}
 }
 
 export class ConflictError extends AppError {
-	constructor(message?: string, details?: unknown) {
-		super(409, "CONFLICT", message ?? "Resource already exists", details, message === undefined);
+	constructor(message?: string, options: ErrorOptions = {}) {
+		super(...clientError(409, "CONFLICT", "Resource already exists", message, options));
 	}
 }
 
@@ -104,7 +114,7 @@ export class RequestTimeoutError extends AppError {
 
 /** 503: a dependency (queue, broker, provider) is unavailable; the request may be retried. */
 export class ServiceUnavailableError extends AppError {
-	constructor(message?: string, code = "SERVICE_UNAVAILABLE") {
-		super(503, code, message ?? "Service unavailable", undefined, message === undefined);
+	constructor(message?: string, options: ErrorOptions = {}) {
+		super(...clientError(503, "SERVICE_UNAVAILABLE", "Service unavailable", message, options));
 	}
 }

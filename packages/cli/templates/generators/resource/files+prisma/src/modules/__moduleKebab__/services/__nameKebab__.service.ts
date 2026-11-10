@@ -43,7 +43,7 @@ export async function list__namePluralPascal__(
 
 export async function get__namePascal__(id: string, executor: Executor = db): Promise<__namePascal__> {
 	const row = await executor.__nameCamel__.findUnique({ where: { id } });
-	if (!row) throw new NotFoundError("__nameTitle__");
+	if (!row) throw new NotFoundError("__nameTitle__ not found");
 	return to__namePascal__(row);
 }
 
