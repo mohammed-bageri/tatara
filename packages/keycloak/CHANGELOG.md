@@ -1,5 +1,12 @@
 # @tatara/keycloak
 
+## 0.1.7
+
+### Patch Changes
+
+- Updated dependencies [a15c818]
+  - @tatara/auth@0.6.0
+
 ## 0.1.6
 
 ### Patch Changes
