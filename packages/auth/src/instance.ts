@@ -3,15 +3,16 @@ import { type BetterAuthOptions, betterAuth } from "better-auth";
 import type { Context, Env, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
-import { type AuthEnv, type PrincipalResolver, principalMiddleware } from "./principal.ts";
-import { isBannedNow, type SessionAuth, sessionPrincipal } from "./session.ts";
+import {
+	type AuthEnv,
+	OrgRequiredError,
+	type PrincipalResolver,
+	principalMiddleware,
+} from "./principal.ts";
 
-/** 400 ORG_REQUIRED: the route acts in an organization and the request didn't say which. */
-export class OrgRequiredError extends AppError {
-	constructor() {
-		super(400, "ORG_REQUIRED", "Choose an organization (x-org-id header)", undefined, true);
-	}
-}
+export { OrgRequiredError } from "./principal.ts";
+
+import { isBannedNow, type SessionAuth, sessionPrincipal } from "./session.ts";
 
 export interface AuthInstanceOptions<A> {
 	/** other credentials besides the session, tried in order (e.g. Keycloak tokens) */

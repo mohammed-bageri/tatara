@@ -17,6 +17,7 @@ export {
 export { mergeAuthOpenApi, type OpenApiAuth } from "./openapi.ts";
 export {
 	type AuthEnv,
+	currentOrgId,
 	currentPrincipal,
 	type Principal,
 	type PrincipalResolver,

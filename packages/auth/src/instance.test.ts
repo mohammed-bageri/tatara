@@ -6,6 +6,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
 	type AuthEnv,
 	createAuthInstance,
+	currentOrgId,
 	currentPrincipal,
 	type Principal,
 	requireAuth,
@@ -65,6 +66,7 @@ function app() {
 	});
 	app.use(attachPrincipal);
 	app.get("/org", requireOrg(), (c) => c.json(currentPrincipal(c)));
+	app.get("/org-id", requireOrg(), (c) => c.json({ orgId: currentOrgId(c) }));
 	app.get("/me", requireAuth(), (c) => c.json(currentPrincipal(c)));
 	app.get("/org-cookie", requireOrg({ cookie: "app_org" }), (c) => c.json(currentPrincipal(c)));
 	app.get("/orgs/:orgId/me", requireOrg({ param: "orgId" }), (c) => c.json(currentPrincipal(c)));
@@ -144,6 +146,12 @@ describe("requireOrg", () => {
 			headers: { ...withCookie(other), "x-org-id": orgId },
 		});
 		expect(header.status).toBe(200);
+	});
+
+	it("gives the org the request acts in", async () => {
+		const { orgId, headers } = await member();
+		const res = await app().request("/org-id", { headers: { ...headers, "x-org-id": orgId } });
+		expect(await res.json()).toEqual({ orgId });
 	});
 
 	it("401s without a principal", async () => {
