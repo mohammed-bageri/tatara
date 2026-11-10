@@ -4,6 +4,7 @@ import { pino } from "pino";
 import { describe, expect, it, vi } from "vitest";
 import {
 	AppError,
+	ConflictError,
 	codeTranslator,
 	contentDisposition,
 	corsOrigin,
@@ -11,6 +12,7 @@ import {
 	createValidationHook,
 	cursorPage,
 	errorBody,
+	ForbiddenError,
 	type HandleErrorsOptions,
 	type HttpEnv,
 	handleErrors,
@@ -22,6 +24,7 @@ import {
 	ServiceUnavailableError,
 	success,
 	TooManyRequestsError,
+	UnauthorizedError,
 	uuidParams,
 	ValidationError,
 } from "./index.ts";
@@ -77,7 +80,7 @@ describe("handleErrors hooks", () => {
 			error: "طلبات كثيرة",
 			code: "RATE_LIMIT_EXCEEDED",
 		});
-		const specific = await send(new NotFoundError("Job"), options);
+		const specific = await send(new NotFoundError("Job not found"), options);
 		expect(specific.body).toEqual({ success: false, error: "Job not found", code: "NOT_FOUND" });
 		const generic = await send(new NotFoundError(), options);
 		expect(generic.body.error).toBe("غير موجود");
@@ -174,9 +177,35 @@ describe("handleErrors hooks", () => {
 			code: "SERVICE_UNAVAILABLE",
 			translatable: true,
 		});
-		expect(new ServiceUnavailableError("Queue down", "QUEUE_DOWN")).toMatchObject({
+		expect(new ServiceUnavailableError("Queue down", { code: "QUEUE_DOWN" })).toMatchObject({
 			code: "QUEUE_DOWN",
+			translatable: true,
+		});
+	});
+
+	it("gives a 4xx a code and details of its own", () => {
+		expect(new NotFoundError("Job not found", { code: "JOB_NOT_FOUND" })).toMatchObject({
+			status: 404,
+			code: "JOB_NOT_FOUND",
+			message: "Job not found",
+			translatable: true,
+		});
+		expect(new ConflictError("Taken", { details: { field: "slug" } })).toMatchObject({
+			status: 409,
+			code: "CONFLICT",
+			details: { field: "slug" },
 			translatable: false,
+		});
+		expect(new ForbiddenError(undefined, { code: "ORG_INACTIVE" })).toMatchObject({
+			status: 403,
+			code: "ORG_INACTIVE",
+			message: "You do not have permission to do this",
+			translatable: true,
+		});
+		expect(new UnauthorizedError()).toMatchObject({
+			status: 401,
+			code: "UNAUTHORIZED",
+			translatable: true,
 		});
 	});
 });

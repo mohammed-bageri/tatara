@@ -300,7 +300,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 
 	async function customRole(orgId: string, roleId: string): Promise<RoleRow> {
 		const role = await store.findRole(orgId, roleId);
-		if (!role) throw new NotFoundError("Role");
+		if (!role) throw new NotFoundError("Role not found");
 		if (role.isSystem)
 			throw new BusinessRuleError("SYSTEM_ROLE_IMMUTABLE", "Built-in roles cannot be changed");
 		return role;
@@ -323,7 +323,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 			grants,
 		});
 		const role = await store.findRole(orgId, id);
-		if (!role) throw new NotFoundError("Role");
+		if (!role) throw new NotFoundError("Role not found");
 		await audit({ orgId, actorId, changeType: "role_created", after: role });
 		return role;
 	}
@@ -367,7 +367,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 
 	async function assignRole(actorId: string | null, orgId: string, userId: string, roleId: string) {
 		const role = await store.findRole(orgId, roleId);
-		if (!role) throw new NotFoundError("Role");
+		if (!role) throw new NotFoundError("Role not found");
 		const added = await store.assignRole(orgId, userId, roleId, actorId);
 		await cache.invalidateMember(userId, orgId);
 		if (added && actorId) {
@@ -403,7 +403,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 
 	async function revokeRole(actorId: string, orgId: string, userId: string, roleId: string) {
 		const removed = await store.revokeRole(orgId, userId, roleId);
-		if (!removed) throw new NotFoundError("Role assignment");
+		if (!removed) throw new NotFoundError("Role assignment not found");
 		await cache.invalidateMember(userId, orgId);
 		await audit({
 			orgId,
@@ -438,7 +438,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		input: OverlayInput,
 	) {
 		const [grant] = validateGrants([input], { allowMeta: input.effect === "deny" });
-		if (!grant) throw new NotFoundError("Permission");
+		if (!grant) throw new NotFoundError("Permission not found");
 		await refuseUnfitHolder(orgId, userId);
 		const id = await store.addOverlay({
 			orgId,
@@ -464,7 +464,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 
 	async function removeOverlay(actorId: string, orgId: string, userId: string, overlayId: string) {
 		const removed = await store.removeOverlay(orgId, userId, overlayId);
-		if (!removed) throw new NotFoundError("Overlay");
+		if (!removed) throw new NotFoundError("Overlay not found");
 		await cache.invalidateMember(userId, orgId);
 		await audit({
 			orgId,
@@ -546,7 +546,7 @@ export function createAuthz<K extends string = string>(options: AuthzOptions) {
 		input: Omit<RoleInput, "grants">,
 	): Promise<RoleRow> {
 		const [source] = await rolesInOrg(orgId, [roleId]);
-		if (!source) throw new NotFoundError("Role");
+		if (!source) throw new NotFoundError("Role not found");
 		const role = await createRole(actorId, orgId, {
 			...input,
 			// meta resources are never custom grants, even when a built-in role holds them

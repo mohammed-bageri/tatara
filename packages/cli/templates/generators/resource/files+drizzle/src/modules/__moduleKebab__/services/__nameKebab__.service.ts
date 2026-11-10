@@ -44,7 +44,7 @@ export async function get__namePascal__(id: string, executor: Executor = db): Pr
 		.from(__namePluralCamel__)
 		.where(eq(__namePluralCamel__.id, id))
 		.limit(1);
-	if (!row) throw new NotFoundError("__nameTitle__");
+	if (!row) throw new NotFoundError("__nameTitle__ not found");
 	return to__namePascal__(row);
 }
 
