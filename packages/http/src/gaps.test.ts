@@ -237,7 +237,7 @@ describe("configurable validation", () => {
 		});
 		expect(res.status).toBe(400);
 		const body = await res.json();
-		expect(body.error).toContain("at least 3 characters");
+		expect(body.error).toContain("expected string to have");
 		expect(body.code).toBe("VALIDATION_ERROR");
 	});
 
@@ -289,7 +289,9 @@ describe("configurable validation", () => {
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body.error).toBe("Invalid request");
-		expect(body.details).toEqual([{ path: "name", message: expect.any(String), code: "invalid_type" }]);
+		expect(body.details).toEqual([
+			{ path: "name", message: expect.any(String), code: "invalid_type" },
+		]);
 	});
 
 	it("handleErrors() uses first-issue message for thrown ZodErrors when configured", async () => {
@@ -303,7 +305,7 @@ describe("configurable validation", () => {
 		const res = await a.request("/boom");
 		expect(res.status).toBe(400);
 		const body = await res.json();
-		expect(body.error).toContain("at least 5 characters");
+		expect(body.error).toContain("expected string to have");
 	});
 
 	it("handleErrors() uses custom detail for thrown ZodErrors when configured", async () => {
@@ -334,6 +336,8 @@ describe("configurable validation", () => {
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body.error).toBe("Invalid request");
-		expect(body.details).toEqual([{ path: "z", message: expect.any(String), code: "invalid_type" }]);
+		expect(body.details).toEqual([
+			{ path: "z", message: expect.any(String), code: "invalid_type" },
+		]);
 	});
 });

@@ -34,8 +34,8 @@ const changed = (result: unknown): number => {
 };
 
 /** The NotificationStore for Drizzle, over the app's database and its notification tables. */
-// biome-ignore lint/suspicious/noExplicitAny: a pg or mysql drizzle database
 export function drizzleNotificationStore(
+	// biome-ignore lint/suspicious/noExplicitAny: a pg or mysql drizzle database
 	db: any,
 	tables: DrizzleNotificationTables,
 ): NotificationStore {
