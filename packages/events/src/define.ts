@@ -89,15 +89,31 @@ type RecordsOf<E> = E extends readonly (infer R)[] ? RecordOf<R> : RecordOf<E>;
 
 const NAME = /^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/;
 
+/** Validates event names: a RegExp or a function returning an error message (or undefined if valid). */
+export type EventNameValidator = RegExp | ((name: string) => string | undefined);
+
 /** Default export of every `events/*.ts` (alone or in an array). */
 export function defineEvent<
 	const D extends Omit<EventDefinition, "version"> & { version?: number },
->(definition: D): Omit<D, "version"> & { version: number } {
-	if (!NAME.test(definition.name)) {
+>(definition: D, validator?: EventNameValidator): Omit<D, "version"> & { version: number } {
+	const pattern = validator instanceof RegExp ? validator : undefined;
+	const check = typeof validator === "function" ? validator : undefined;
+
+	if (pattern && !pattern.test(definition.name)) {
+		throw new Error(
+			`Event name "${definition.name}" does not match the required pattern ${pattern}`,
+		);
+	} else if (check) {
+		const error = check(definition.name);
+		if (error !== undefined) {
+			throw new Error(`Event name "${definition.name}" failed validation: ${error}`);
+		}
+	} else if (!validator && !NAME.test(definition.name)) {
 		throw new Error(
 			`Event name "${definition.name}" must be dotted lowercase, e.g. "billing.invoice.paid"`,
 		);
 	}
+
 	const version = definition.version ?? 1;
 	if (!Number.isInteger(version) || version < 1) {
 		throw new Error(`Event "${definition.name}" version must be a positive integer`);

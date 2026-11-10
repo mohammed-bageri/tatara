@@ -7,6 +7,7 @@ export {
 	type EmitInput,
 	type EventActor,
 	type EventDefinition,
+	type EventNameValidator,
 	type EventPayloadsOf,
 	type EventRecord,
 	type Subscriber,
