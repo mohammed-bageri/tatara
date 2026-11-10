@@ -20,6 +20,8 @@ export interface EventDefinition<N extends string = string, S extends z.ZodType 
 	/** what the event is about, e.g. "invoice"; stored with each event */
 	aggregateType?: string;
 	description?: string;
+	/** how a UI names the event (an i18n key, or text): activity feeds, automation triggers */
+	label?: string;
 }
 
 /** A stored event, as a subscriber receives it. */
