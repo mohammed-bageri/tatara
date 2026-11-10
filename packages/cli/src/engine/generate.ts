@@ -305,7 +305,7 @@ export async function renderApp(
 	if (options.packageManager === "pnpm") files.set("pnpm-workspace.yaml", pnpmWorkspace(features));
 
 	const config: ProjectConfig = {
-		$schema: "https://raw.githubusercontent.com/mohammed-bageri/tatara-cli/main/schema/tatara.json",
+		$schema: "https://raw.githubusercontent.com/mohammed-bageri/tatara/main/schema/tatara.json",
 		version: cliVersion(),
 		name: options.name,
 		orm: options.orm,

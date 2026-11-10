@@ -1,6 +1,6 @@
 # @tatara/testing
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli).
+Part of [tatara](https://github.com/mohammed-bageri/tatara).
 
 Test helpers for tatara apps: call the app in-process, give each Vitest worker its own database
 and Redis db, and empty the database between tests. ORM-agnostic: the app passes its own migrate

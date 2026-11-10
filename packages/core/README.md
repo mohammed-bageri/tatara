@@ -1,6 +1,6 @@
 # @tatara/core
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli). Commands, lifecycle, readiness,
+Part of [tatara](https://github.com/mohammed-bageri/tatara). Commands, lifecycle, readiness,
 logger options, and the small helpers every app needs.
 
 ## Crypto (`@tatara/core`)

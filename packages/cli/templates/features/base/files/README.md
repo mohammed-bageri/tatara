@@ -1,6 +1,6 @@
 # __APP_NAME__
 
-A Hono API created with [tatara](https://github.com/mohammed-bageri/tatara-cli).
+A Hono API created with [tatara](https://github.com/mohammed-bageri/tatara).
 
 ## Getting started
 

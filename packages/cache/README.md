@@ -1,6 +1,6 @@
 # @tatara/cache
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli).
+Part of [tatara](https://github.com/mohammed-bageri/tatara).
 
 One cache contract with three drivers: `memoryStore()` (dev and tests), `redisStore(redis)` from
 `@tatara/cache/redis`, and `postgresStore(pool)` from `@tatara/cache/postgres` (an unlogged table in

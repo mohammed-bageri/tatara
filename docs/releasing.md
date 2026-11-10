@@ -20,7 +20,10 @@ The workflow has no `NPM_TOKEN`. npm trusts GitHub's OIDC token instead, so each
 list this workflow as a trusted publisher:
 
 1. On npmjs.com, open the package → **Settings** → **Trusted publishing** → **GitHub Actions**.
-2. Organization or user: `mohammed-bageri`, repository: `tatara-cli`, workflow file: `release.yml`.
+2. Organization or user: `mohammed-bageri`, repository: `tatara`, workflow file: `release.yml`.
+
+   Or from the command line (npm ≥ 11.15, your 2FA; one trusted publisher per package, so revoke an old one first with `npm trust revoke <pkg> --id=<id>`):
+   `npm trust github @tatara/<pkg> --file release.yml --repository mohammed-bageri/tatara --allow-publish --yes`
 3. Save. Do this for `@tatara/cli`, `create-tatara`, and every new package.
 
 A brand-new package has to be published once by hand (`pnpm publish --otp <code>` in its folder)

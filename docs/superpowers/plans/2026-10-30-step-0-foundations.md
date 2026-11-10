@@ -131,7 +131,7 @@ Expected: exits 0 and reports no pending changesets.
 - [ ] **Step 4: Write `docs/releasing.md`**
   - Adding a changeset.
   - What the Version PR does.
-  - **[USER]** one-time setup: on npmjs.com, for each package, Settings → Trusted publishing → GitHub Actions, repo `mohammed-bageri/tatara-cli`, workflow `release.yml`. New packages must be published once by hand before a trusted publisher can be added to them.
+  - **[USER]** one-time setup: on npmjs.com, for each package, Settings → Trusted publishing → GitHub Actions, repo `mohammed-bageri/tatara`, workflow `release.yml`. New packages must be published once by hand before a trusted publisher can be added to them.
   - npm's staged-release approval may still apply to each release.
 
 - [ ] **Step 5: Commit**

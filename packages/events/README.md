@@ -3,7 +3,7 @@
 A transactional domain-event outbox. A module records "this happened" in the transaction that
 makes the change, and other modules react to it later, each on its own.
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli). `tatara new --addons events`
+Part of [tatara](https://github.com/mohammed-bageri/tatara). `tatara new --addons events`
 (Postgres + Drizzle) wires all of this up.
 
 ## Guarantees

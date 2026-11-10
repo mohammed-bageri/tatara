@@ -1,6 +1,6 @@
 # @tatara/observability
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli).
+Part of [tatara](https://github.com/mohammed-bageri/tatara).
 
 `startTelemetry({ serviceName, endpoint })` starts OpenTelemetry (traces and metrics over OTLP/HTTP,
 Node auto-instrumentation) and stops it on shutdown; without an endpoint it does nothing.

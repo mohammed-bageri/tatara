@@ -1,6 +1,6 @@
 # @tatara/email
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli).
+Part of [tatara](https://github.com/mohammed-bageri/tatara).
 
 Sending email: a transport, templates and a layout, a durable queue over the app's tables, a
 per-organization suppression list, signed unsubscribe links and the Mailgun webhook. The app owns

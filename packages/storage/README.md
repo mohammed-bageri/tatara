@@ -1,6 +1,6 @@
 # @tatara/storage
 
-Part of [tatara](https://github.com/mohammed-bageri/tatara-cli).
+Part of [tatara](https://github.com/mohammed-bageri/tatara).
 
 Object storage for tatara apps: one `Storage` contract with local, S3-compatible and GCS drivers,
 upload keys, upload validation, and orphan reconciliation. The SDKs are optional peers:
