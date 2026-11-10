@@ -10,7 +10,13 @@ import { secureHeaders } from "hono/secure-headers";
 import { AppError, TooManyRequestsError, ValidationError } from "./errors.ts";
 import { errorBody } from "./response.ts";
 import { requestTimeout, type TimeoutOptions } from "./timeout.ts";
-import { type IssueLike, validationError, validationHook } from "./validation.ts";
+import {
+	createValidationHook,
+	type IssueLike,
+	type ValidationHookOptions,
+	validationError,
+	validationHook,
+} from "./validation.ts";
 
 /** Variables every tatara app has; apps extend them with their own (principal, language, …). */
 export interface HttpEnv {
@@ -120,9 +126,15 @@ export function defineRoutes<D extends RouteDefinition<string, any>>(definition:
 	return definition;
 }
 
+export interface CreateRouterOptions {
+	/** Options for validation hook behavior (message format, status code, detail shape) */
+	validation?: ValidationHookOptions;
+}
+
 /** A router for one routes file. Attach middleware per route or per path, never `use("*")`. */
-export function createRouter<E extends HttpEnv>(): OpenAPIHono<E> {
-	return new OpenAPIHono<E>({ defaultHook: validationHook });
+export function createRouter<E extends HttpEnv>(options: CreateRouterOptions = {}): OpenAPIHono<E> {
+	const hook = options.validation ? createValidationHook(options.validation) : validationHook;
+	return new OpenAPIHono<E>({ defaultHook: hook });
 }
 
 /** Mounts the discovered routes that belong to `app` under `prefix`. */
@@ -190,6 +202,8 @@ export interface HandleErrorsOptions<E extends HttpEnv> {
 	codes?: Record<string, string>;
 	/** the status for ValidationErrors without an explicit one and for thrown ZodErrors (default 400) */
 	validationStatus?: 400 | 422;
+	/** Options for validation errors converted from thrown ZodErrors (message format, detail shape) */
+	validation?: ValidationHookOptions;
 	/** put unhandled errors' message, name and stack in the response: development only */
 	exposeErrors?: boolean;
 	/** applied to an unhandled error before it is logged or exposed, e.g. `redactDbQueryErrors` from @tatara/db */
@@ -233,7 +247,8 @@ export function handleErrors<E extends HttpEnv>(
 				break;
 			}
 		}
-		if (!(err instanceof AppError) && isZodError(err)) err = validationError(err.issues);
+		if (!(err instanceof AppError) && isZodError(err))
+			err = validationError(err.issues, options.validation);
 		if (err instanceof AppError) {
 			if (err instanceof TooManyRequestsError)
 				c.header("Retry-After", String(err.retryAfterSeconds));
