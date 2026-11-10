@@ -273,7 +273,12 @@ describe("tenant context", () => {
 describe("requirePermission", () => {
 	it("answers 401, then 403, then lets the holder through", async () => {
 		expect((await app().request("/docs")).status).toBe(401);
-		expect((await app().request("/docs", { headers: { "x-user": "u1" } })).status).toBe(403);
+		const denied = await app().request("/docs", { headers: { "x-user": "u1" } });
+		expect(denied.status).toBe(403);
+		expect(await denied.json()).toMatchObject({
+			code: "PERMISSION_DENIED",
+			details: { permission: "doc:publish" },
+		});
 		await authz.addOverlay(null, "default", "u1", {
 			resource: "doc",
 			action: "publish",

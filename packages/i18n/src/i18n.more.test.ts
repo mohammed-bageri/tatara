@@ -47,12 +47,12 @@ describe("translator", () => {
 		expect(i18n.translator("ar")("common:items", { count: 100 })).toBe("100 عناصر");
 	});
 
-	it("falls back to the default language, then defaultValue, then the key", () => {
+	it("falls back to the default language, then defaultValue, then the key without its namespace", () => {
 		const t = i18n.translator("fr");
 		expect(t("jobs:status.DRAFT")).toBe("Draft");
 		expect(i18n.translator("ar")("jobs:status.DRAFT")).toBe("Draft");
 		expect(t("jobs:missing", { defaultValue: "Other" })).toBe("Other");
-		expect(t("jobs:missing")).toBe("jobs:missing");
+		expect(t("jobs:missing")).toBe("missing");
 	});
 
 	it("answers exists, resource, resolveLanguage and pick", () => {
@@ -247,5 +247,29 @@ describe("searchNamespaces", () => {
 			dictionaries: { en: { orders: { errors: { NOT_IN_STOCK: "Out of stock" } } } },
 		});
 		expect(plain.t("en", "errors.NOT_IN_STOCK", "fallback")).toBe("fallback");
+	});
+});
+
+describe("defaultNamespace and variables", () => {
+	const i18n = createI18n({
+		defaultLanguage: "en",
+		defaultNamespace: "common",
+		dictionaries: { en: { common: { hello: "Hello {{name}}" }, shop: { title: "Shop" } } },
+	});
+
+	it("looks a key without a namespace up in the default namespace", () => {
+		expect(i18n.t("en", "hello", "x", { name: "Sara" })).toBe("Hello Sara");
+		expect(i18n.t("en", "shop:title")).toBe("Shop");
+	});
+
+	it("renders a variable passed as null or undefined as empty, and keeps one never passed", () => {
+		expect(i18n.t("en", "hello", "x", { name: null })).toBe("Hello ");
+		expect(i18n.t("en", "hello", "x", { name: undefined })).toBe("Hello ");
+		expect(i18n.t("en", "hello", "x", {})).toBe("Hello {{name}}");
+	});
+
+	it("gives a missing key's own name, without its namespace, from a translator", () => {
+		expect(i18n.translator("en")("shop:nope")).toBe("nope");
+		expect(i18n.translator("en")("nope", { defaultValue: "Fallback" })).toBe("Fallback");
 	});
 });

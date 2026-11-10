@@ -43,6 +43,8 @@ export interface I18nOptions {
 	 * `errors.NOT_IN_STOCK` finds `orders.errors.NOT_IN_STOCK` (modules own their strings).
 	 */
 	searchNamespaces?: boolean;
+	/** where a key without a namespace is looked up after the top level, e.g. "common" */
+	defaultNamespace?: string;
 }
 
 type Node = string | Dictionary | undefined;
@@ -68,7 +70,9 @@ const VARIABLE = /\{\{\s*(\w+)\s*\}\}|\{(\w+)\}/g;
 function interpolate(text: string, vars: TranslateVars): string {
 	return text.replace(VARIABLE, (match, double?: string, single?: string) => {
 		const value = vars[(double ?? single) as string];
-		return value === undefined || value === null ? match : String(value);
+		const name = (double ?? single) as string;
+		// a variable that wasn't passed stays visible; one passed as null or undefined is empty
+		return name in vars ? String(value ?? "") : match;
 	});
 }
 
@@ -77,6 +81,7 @@ export function createI18n({
 	defaultLanguage,
 	detection = {},
 	searchNamespaces = false,
+	defaultNamespace,
 }: I18nOptions) {
 	const languages = Object.keys(dictionaries);
 	const storage = new AsyncLocalStorage<string>();
@@ -141,6 +146,10 @@ export function createI18n({
 		for (const lang of language === defaultLanguage ? [language] : [language, defaultLanguage]) {
 			const text = findIn(lang, key, count, context);
 			if (text !== undefined) return text;
+			if (defaultNamespace && !key.includes(":")) {
+				const inDefault = findIn(lang, `${defaultNamespace}:${key}`, count, context);
+				if (inDefault !== undefined) return inDefault;
+			}
 			const dict = dictionaries[lang];
 			if (!searchNamespaces || !dict || key.includes(":")) continue;
 			for (const ns of Object.keys(dict)) {
@@ -160,7 +169,9 @@ export function createI18n({
 	/** A translator for one language (unsupported → default); missing keys give `defaultValue`, else the key. */
 	function translator(language: string | null | undefined): Translator {
 		const lang = resolveLanguage(language);
-		return (key, vars = {}) => t(lang, key, vars.defaultValue ?? key, vars);
+		// a missing key reads as itself without its namespace, as in i18next
+		return (key, vars = {}) =>
+			t(lang, key, vars.defaultValue ?? key.slice(key.indexOf(":") + 1), vars);
 	}
 
 	/** True when `key` has a string in `language` (or the default language). */

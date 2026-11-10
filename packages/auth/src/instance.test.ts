@@ -66,6 +66,7 @@ function app() {
 	app.use(attachPrincipal);
 	app.get("/org", requireOrg(), (c) => c.json(currentPrincipal(c)));
 	app.get("/me", requireAuth(), (c) => c.json(currentPrincipal(c)));
+	app.get("/org-cookie", requireOrg({ cookie: "app_org" }), (c) => c.json(currentPrincipal(c)));
 	app.get("/orgs/:orgId/me", requireOrg({ param: "orgId" }), (c) => c.json(currentPrincipal(c)));
 	handleErrors(app);
 	return app;
@@ -127,6 +128,22 @@ describe("requireOrg", () => {
 			headers: { ...headers, "x-org-id": orgId },
 		});
 		expect(spoofed.status).toBe(403);
+	});
+
+	it("falls back to the cookie when told to, and the header wins over it", async () => {
+		const { orgId, userId, headers } = await member("teacher");
+		const { orgId: other } = await member();
+		const withCookie = (org: string) => ({
+			...headers,
+			cookie: [headers.cookie, `app_org=${org}`].filter(Boolean).join("; "),
+		});
+		const ok = await app().request("/org-cookie", { headers: withCookie(orgId) });
+		expect(await ok.json()).toMatchObject({ userId, orgId });
+		expect((await app().request("/org-cookie", { headers: withCookie(other) })).status).toBe(403);
+		const header = await app().request("/org-cookie", {
+			headers: { ...withCookie(other), "x-org-id": orgId },
+		});
+		expect(header.status).toBe(200);
 	});
 
 	it("401s without a principal", async () => {
