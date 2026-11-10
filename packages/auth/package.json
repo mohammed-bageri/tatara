@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/auth",
-	"version": "0.6.1",
+	"version": "0.7.0",
 	"description": "tatara auth: principal middleware, guards, OpenAPI merge, dev outbox and test helpers for better-auth",
 	"type": "module",
 	"license": "MIT",
