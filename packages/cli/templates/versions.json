@@ -31,7 +31,7 @@
   "@aws-sdk/s3-request-presigner": "3.1152.0",
   "nodemailer": "10.1.1",
   "@types/nodemailer": "8.0.2",
-  "@tatara/core": "0.2.1",
+  "@tatara/core": "0.2.2",
   "@tatara/http": "0.3.1",
   "@tatara/db": "0.3.2",
   "@tatara/testing": "0.2.1",
