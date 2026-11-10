@@ -99,6 +99,90 @@
 			"propertyNames": {
 				"pattern": "^#"
 			}
+		},
+		"registries": {
+			"description": "App-declared discovery kinds: tatara sync writes each one's matched files as one typed list to src/generated/<name>.ts.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["name", "glob"],
+				"properties": {
+					"name": {
+						"type": "string",
+						"pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$",
+						"not": {
+							"enum": [
+								"routes",
+								"commands",
+								"consumers",
+								"schedules",
+								"events",
+								"subscribers",
+								"emails",
+								"notifications",
+								"channels",
+								"permissions",
+								"seeds",
+								"schema",
+								"prisma"
+							]
+						},
+						"description": "Identifier: the file is src/generated/<name>.ts and exports const <name>."
+					},
+					"glob": {
+						"description": "Globs from the app root; *.test.ts and *.d.ts are skipped.",
+						"oneOf": [
+							{
+								"type": "string",
+								"minLength": 1
+							},
+							{
+								"type": "array",
+								"items": {
+									"type": "string",
+									"minLength": 1
+								},
+								"minItems": 1
+							}
+						]
+					},
+					"export": {
+						"type": "string",
+						"pattern": "^(\\*|[A-Za-z_$][A-Za-z0-9_$]*)$",
+						"default": "default",
+						"description": "What each file contributes: \"default\", \"*\" (the module namespace) or a named export."
+					},
+					"each": {
+						"enum": ["item", "array", "record"],
+						"default": "item",
+						"description": "item: one T per file; array: a T[] per file, spread into the list; record: a Record<string, T> per file."
+					},
+					"type": {
+						"type": "object",
+						"required": ["name"],
+						"properties": {
+							"import": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							}
+						},
+						"additionalProperties": false,
+						"description": "The item type T; leave out import for global types such as string."
+					},
+					"shape": {
+						"enum": ["list", "entries"],
+						"default": "list",
+						"description": "list: the values; entries: { owner, file, value }, owner \"module:<name>\" or \"core:<name>\"."
+					},
+					"unique": {
+						"type": "string",
+						"description": "A field no two items may share; the generated module throws on load otherwise. Not with each: record."
+					}
+				},
+				"additionalProperties": false
+			}
 		}
 	},
 	"additionalProperties": false
