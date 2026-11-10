@@ -1,5 +1,12 @@
 # @tatara/auth
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [e3b78b2]
+  - @tatara/http@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes
