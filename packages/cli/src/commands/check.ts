@@ -14,6 +14,8 @@ export interface Violation {
 const IMPORT =
 	/(?:import|export)\s[^"']*?from\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
 
+const PUBLIC_FOLDERS = new Set(["services", "db", "events"]);
+
 function lineOf(text: string, index: number): number {
 	return text.slice(0, index).split("\n").length;
 }
@@ -52,19 +54,19 @@ export async function check(project: Project = loadProject()): Promise<Violation
 				});
 			}
 			const target = /^#modules\/([^/]+)\/([^/]+)/.exec(spec);
-			// a module's public surface: its services and its tables (joins and foreign keys)
+			// a module's public surface: its services, its tables (joins and foreign keys) and the
+			// domain events it publishes (other modules subscribe to them)
 			if (
 				moduleName &&
 				target &&
 				target[1] !== moduleName &&
-				target[2] !== "services" &&
-				target[2] !== "db"
+				!PUBLIC_FOLDERS.has(target[2] ?? "")
 			) {
 				violations.push({
 					file,
 					line,
 					rule: "cross-module-imports",
-					message: `use ${target[1]}'s services or tables, not "${spec}"`,
+					message: `use ${target[1]}'s services, tables or events, not "${spec}"`,
 				});
 			}
 		}
