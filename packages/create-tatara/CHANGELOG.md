@@ -1,5 +1,12 @@
 # create-tatara
 
+## 0.21.1
+
+### Patch Changes
+
+- Updated dependencies [7f7c89f]
+  - @tatara/cli@0.21.1
+
 ## 0.21.0
 
 ### Patch Changes

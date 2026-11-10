@@ -1,5 +1,17 @@
 # @tatara/authz
 
+## 0.11.0
+
+### Minor Changes
+
+- 7f7c89f: `createApp({ redactPath })` hides path secrets from the request log. `requireOrg({ cookie })` falls back to a cookie when the header is missing. `requirePermission` answers 403 `PERMISSION_DENIED` with `details.permission` (was `FORBIDDEN`); the i18n template translates it.
+
+### Patch Changes
+
+- Updated dependencies [7f7c89f]
+  - @tatara/http@0.6.0
+  - @tatara/auth@0.4.0
+
 ## 0.10.2
 
 ### Patch Changes

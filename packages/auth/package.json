@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/auth",
-	"version": "0.3.3",
+	"version": "0.4.0",
 	"description": "tatara auth: principal middleware, guards, OpenAPI merge, dev outbox and test helpers for better-auth",
 	"type": "module",
 	"license": "MIT",
@@ -31,7 +31,7 @@
 		"better-auth": "^1.7.8",
 		"hono": "^4.13.13",
 		"@hono/zod-openapi": "^1.6.3",
-		"@tatara/http": "^0.5.0",
+		"@tatara/http": "^0.6.0",
 		"@tatara/core": "^0.2.1"
 	},
 	"devDependencies": {
