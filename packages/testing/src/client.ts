@@ -8,6 +8,7 @@ export interface ApiResponse<T = unknown> {
 
 export interface RequestOptions {
 	headers?: Record<string, string>;
+	body?: unknown;
 }
 
 async function send<T>(
@@ -44,6 +45,6 @@ export function client(target: HttpApp) {
 		patch: <T = unknown>(path: string, body?: unknown, o?: RequestOptions) =>
 			send<T>(target, "PATCH", path, body, o),
 		delete: <T = unknown>(path: string, o?: RequestOptions) =>
-			send<T>(target, "DELETE", path, undefined, o),
+			send<T>(target, "DELETE", path, o?.body, o),
 	};
 }
