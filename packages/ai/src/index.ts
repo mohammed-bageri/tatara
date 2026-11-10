@@ -22,6 +22,7 @@ export {
 	classifyByStatus,
 	classifyError,
 	isAIError,
+	isBlockedResponse,
 	isExhaustionError,
 	isTransientError,
 } from "./errors.ts";

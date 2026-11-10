@@ -190,3 +190,8 @@ export function classifyError(error: unknown, label?: string): AIError {
 		? classifyByStatus(error, label)
 		: classifyByMessage(error, label);
 }
+
+/** True when the model refused the prompt itself (a safety block), not when a request failed. */
+export function isBlockedResponse(error: unknown): error is AIError {
+	return error instanceof AIError && error.code === "SAFETY_FILTER" && error.cause === undefined;
+}

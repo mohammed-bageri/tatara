@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context } from "hono";
 
@@ -19,10 +20,18 @@ export function trustedClientIp(
 }
 
 /**
- * The caller's address: from X-Forwarded-For when `trustedHops` proxies sit in front (Cloud Run,
- * a load balancer: 1), else the socket's peer. Undefined when neither is known (in-process tests).
+ * The caller's address: from `trustedHeader` when the app's own proxy sets the client address in
+ * one (x-real-ip, cf-connecting-ip), else from X-Forwarded-For when `trustedHops` proxies sit in
+ * front (Cloud Run, a load balancer: 1), else the socket's peer. Undefined when none is known.
  */
-export function clientIp(c: Context, options: { trustedHops?: number } = {}): string | undefined {
+export function clientIp(
+	c: Context,
+	options: { trustedHops?: number; trustedHeader?: string } = {},
+): string | undefined {
+	if (options.trustedHeader) {
+		const value = c.req.header(options.trustedHeader)?.trim();
+		if (value && isIP(value) !== 0) return value;
+	}
 	const forwarded = trustedClientIp(c.req.header("x-forwarded-for"), options.trustedHops ?? 0);
 	if (forwarded) return forwarded;
 	try {
