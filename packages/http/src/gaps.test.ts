@@ -13,6 +13,7 @@ import {
 	type RateLimitCounter,
 	rateLimit,
 	trustedClientIp,
+	tryDecodeCursor,
 } from "./index.ts";
 
 const logger = pino({ level: "silent" });
@@ -124,6 +125,17 @@ describe("cursor pagination", () => {
 			const res = await a.request(`/list?cursor=${encodeURIComponent(cursor)}`);
 			expect(res.status).toBe(400);
 			expect(await res.json()).toMatchObject({ code: "INVALID_CURSOR" });
+		}
+	});
+
+	it("gives null instead of a 400 from tryDecodeCursor", () => {
+		const cursor = encodeCursor({ id: "r1", createdAt: "2026-01-01T00:00:00.000Z" });
+		expect(tryDecodeCursor(position, cursor)).toEqual({
+			id: "r1",
+			createdAt: "2026-01-01T00:00:00.000Z",
+		});
+		for (const bad of ["not-base64!", encodeCursor({ id: 1 }), encodeCursor("x"), ""]) {
+			expect(tryDecodeCursor(position, bad)).toBeNull();
 		}
 	});
 });

@@ -30,19 +30,39 @@ export function cleanText(input: string, options: CleanTextOptions = {}): string
 	return text.trim();
 }
 
+export interface SafeUrlOptions {
+	/** schemes to accept (default http: and https:) */
+	protocols?: readonly string[];
+	/** a scheme to put in front of a bare host like "example.com/path", e.g. "https:" */
+	defaultProtocol?: string;
+}
+
 /** A link a user gave, if it's http(s) (or one of `protocols`); null for javascript:, data: and junk. */
 export function safeUrl(
-	input: string,
-	protocols: readonly string[] = ["http:", "https:"],
+	input: string | null | undefined,
+	protocolsOrOptions: readonly string[] | SafeUrlOptions = {},
 ): string | null {
-	try {
-		const url = new URL(input.trim());
-		// https://bank.com@evil.com reads as the bank; credentials don't belong in stored links
-		if (url.username || url.password) return null;
-		return protocols.includes(url.protocol) ? url.toString() : null;
-	} catch {
-		return null;
-	}
+	const options = Array.isArray(protocolsOrOptions)
+		? { protocols: protocolsOrOptions as readonly string[] }
+		: (protocolsOrOptions as SafeUrlOptions);
+	const protocols = options.protocols ?? ["http:", "https:"];
+	const trimmed = (input ?? "").trim();
+	const check = (candidate: string) => {
+		try {
+			const url = new URL(candidate);
+			// https://bank.com@evil.com reads as the bank; credentials don't belong in stored links
+			if (url.username || url.password) return null;
+			return protocols.includes(url.protocol) ? url.toString() : null;
+		} catch {
+			return null;
+		}
+	};
+	const safe = check(trimmed);
+	if (safe !== null || !options.defaultProtocol) return safe;
+	// only something that reads as a host gets a scheme: "javascript:x" never becomes a link
+	return trimmed.includes(".") && !trimmed.includes("://") && !/\s/.test(trimmed)
+		? check(`${options.defaultProtocol}//${trimmed}`)
+		: null;
 }
 
 /** A zod string that's cleaned before it's checked, e.g. `text({ max: 120 })` for a title. */
@@ -59,9 +79,9 @@ export function text(options: CleanTextOptions & { min?: number; max: number }) 
 }
 
 /** A zod string that must be a safe http(s) link; it comes out normalized. */
-export function url(protocols?: readonly string[]) {
+export function url(protocolsOrOptions?: readonly string[] | SafeUrlOptions) {
 	return z.string().transform((value, ctx) => {
-		const safe = safeUrl(value, protocols);
+		const safe = safeUrl(value, protocolsOrOptions);
 		if (safe === null) {
 			ctx.addIssue({ code: "custom", message: "Must be an http(s) link" });
 			return z.NEVER;

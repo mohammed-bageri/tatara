@@ -1,7 +1,7 @@
 {
 	"name": "@tatara/core",
 	"version": "0.1.3",
-	"description": "tatara core: commands, flags, lifecycle, readiness, logger options",
+	"description": "tatara core: commands, flags, lifecycle, readiness, logger options, crypto, text, time and CSV helpers",
 	"type": "module",
 	"license": "MIT",
 	"sideEffects": false,
@@ -13,6 +13,14 @@
 		"./html": {
 			"types": "./dist/html.d.mts",
 			"import": "./dist/html.mjs"
+		},
+		"./time": {
+			"types": "./dist/time.d.mts",
+			"import": "./dist/time.mjs"
+		},
+		"./csv": {
+			"types": "./dist/csv.d.mts",
+			"import": "./dist/csv.mjs"
 		}
 	},
 	"files": [
