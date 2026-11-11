@@ -1,5 +1,11 @@
 # @tatara/http
 
+## 0.8.1
+
+### Patch Changes
+
+- f33ac36: `trustedClientIp` counts an empty X-Forwarded-For entry as a hop and returns only a valid IP, so a trailing empty entry no longer hands trust to a client-sent address.
+
 ## 0.8.0
 
 ### Minor Changes

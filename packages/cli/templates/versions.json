@@ -32,7 +32,7 @@
   "nodemailer": "10.1.1",
   "@types/nodemailer": "8.0.2",
   "@tatara/core": "0.2.2",
-  "@tatara/http": "0.8.0",
+  "@tatara/http": "0.8.1",
   "@tatara/db": "0.4.0",
   "@tatara/testing": "0.2.2",
   "@tatara/auth": "0.7.1",
