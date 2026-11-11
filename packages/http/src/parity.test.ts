@@ -331,6 +331,17 @@ describe("response helpers", () => {
 		expect(() => new Headers({ "content-disposition": value })).not.toThrow();
 	});
 
+	it("replaces quotes, backslashes and every non-ASCII char with _ in the fallback", () => {
+		expect(contentDisposition('a"b\\c.pdf')).toContain('filename="a_b_c.pdf"');
+		const arabic = contentDisposition("عرض");
+		expect(arabic).toContain('filename="___"');
+		expect(arabic).toContain(`filename*=UTF-8''${encodeURIComponent("عرض")}`);
+	});
+
+	it("falls back to download for an empty file name", () => {
+		expect(contentDisposition("")).toContain('filename="download"');
+	});
+
 	it("validates uuids and uuid params", () => {
 		const id = "0190b0a8-0e1f-7c3a-8f5e-6f2a1b3c4d5e";
 		expect(isUuid(id)).toBe(true);
