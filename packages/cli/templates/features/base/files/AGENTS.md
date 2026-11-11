@@ -24,13 +24,19 @@ with no knowledge of Hono. Routes validate input, call services and shape the re
 
 Rules enforced by `tatara check` (part of lint):
 
-- Import with `#core/…`, `#modules/…`, `#apps/…`, `#generated/…`, `#tests/…`; no `../` imports.
+- Import with `#core/…`, `#modules/…`, `#apps/…`, `#generated/…`, `#tests/…`; no `../` imports,
+  side-effect imports, `vi.mock` or `vi.importActual` paths.
 - `src/core` never imports from `src/modules`.
 - A module uses another module only through its `services/`, its tables (`db/`: joins,
   foreign keys) and the domain events it publishes (`events/`, to subscribe). Everything else
   in a module is private.
 - Module routers never call `use("*")`; attach middleware per route or per path.
 - `process.env` is read only in `src/core/config/env.ts`.
+- A module's folders are ones tatara knows: `routes`, `services`, `validators`, `db`, `commands`,
+  `tests`, `consumers`, `schedules`, `events`, `event-subscribers`, `emails`, `notifications`,
+  `channels`, `permissions`, plus the folder of each `registries` glob in `tatara.json`
+  (`src/modules/*/<folder>/…`, or `src/modules/<module>/<folder>/…` for one module).
+- `*.test.ts` files live in a `tests/` folder (`src/modules/<module>/tests/`, or top-level `tests/`).
 
 ## Generators
 
