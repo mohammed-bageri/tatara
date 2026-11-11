@@ -1,5 +1,11 @@
 # @tatara/http
 
+## 0.8.0
+
+### Minor Changes
+
+- 74c71d9: `corsOrigin(origins, { nestedSubdomains: true })`: a `https://*.example.com` pattern also matches deeper subdomains (`a.b.example.com`). Off by default; still https-only, dot-bounded, apex not included.
+
 ## 0.7.0
 
 ### Minor Changes
