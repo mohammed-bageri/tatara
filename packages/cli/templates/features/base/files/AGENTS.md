@@ -24,13 +24,19 @@ with no knowledge of Hono. Routes validate input, call services and shape the re
 
 Rules enforced by `tatara check` (part of lint):
 
-- Import with `#core/…`, `#modules/…`, `#apps/…`, `#generated/…`, `#tests/…`; no `../` imports.
+- Import with `#core/…`, `#modules/…`, `#apps/…`, `#generated/…`, `#tests/…`; no `../` imports,
+  side-effect imports, `vi.mock` or `vi.importActual` paths.
 - `src/core` never imports from `src/modules`.
 - A module uses another module only through its `services/`, its tables (`db/`: joins,
   foreign keys) and the domain events it publishes (`events/`, to subscribe). Everything else
   in a module is private.
 - Module routers never call `use("*")`; attach middleware per route or per path.
 - `process.env` is read only in `src/core/config/env.ts`.
+- A module's folders are ones tatara knows: `routes`, `services`, `validators`, `db`, `commands`,
+  `tests`, `consumers`, `schedules`, `events`, `event-subscribers`, `emails`, `notifications`,
+  `channels`, `permissions`, plus the folder of each `registries` glob in `tatara.json`
+  (`src/modules/*/<folder>/…`, or `src/modules/<module>/<folder>/…` for one module).
+- `*.test.ts` files live in a `tests/` folder (`src/modules/<module>/tests/`, or top-level `tests/`).
 
 ## Generators
 
@@ -57,7 +63,7 @@ __PM_EXEC__ tatara add <add-on…>         # add jobs, cache, realtime… to thi
   `BusinessRuleError`, `ForbiddenError`, …) and become
   `{ success: false, error, code, details }`. Give a case its own code when the client acts on it:
   `new NotFoundError("Job not found", { code: "JOB_NOT_FOUND" })` (translated as `errors.JOB_NOT_FOUND`).
-- Route files are `routes/<name>.routes.ts` and default-export `defineRoutes({ app, basePath, router })`.
+- Route files are `routes/<name>.routes.ts` and default-export `defineRoutes({ app, basePath, router })`; `app` and `basePath` are string literals, one basePath per file.
   They are found automatically; there is no central list to edit.
 - Long or live lists page by cursor: `cursorQuerySchema` for the query, fetch `limit + 1` rows after
   `decodeCursor(positionSchema, cursor)`, answer `cursorPage(rows, limit, (row) => ({ createdAt, id }))`
