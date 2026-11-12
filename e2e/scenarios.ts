@@ -7,6 +7,7 @@ export interface Scenario {
 	addons: (
 		| "authz"
 		| "jobs"
+		| "temporal"
 		| "events"
 		| "cache"
 		| "notifications"
@@ -116,6 +117,21 @@ export const SCENARIOS: Scenario[] = [
 		pm: "pnpm",
 	}),
 	...core,
+	scenario("dz-pg-temporal", {
+		orm: "drizzle",
+		database: "postgres",
+		auth: "none",
+		addons: ["temporal", "jobs", "observability"],
+		pm: "pnpm",
+	}),
+	scenario("pr-my-temporal", {
+		orm: "prisma",
+		database: "mysql",
+		auth: "better-auth",
+		authMethods: ["keycloak"],
+		addons: ["temporal", "storage"],
+		pm: "pnpm",
+	}),
 	scenario("ba-password-authz", {
 		orm: "drizzle",
 		database: "postgres",

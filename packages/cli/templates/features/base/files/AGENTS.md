@@ -34,7 +34,7 @@ Rules enforced by `tatara check` (part of lint):
 - `process.env` is read only in `src/core/config/env.ts`.
 - A module's folders are ones tatara knows: `routes`, `services`, `validators`, `db`, `commands`,
   `tests`, `consumers`, `schedules`, `events`, `event-subscribers`, `emails`, `notifications`,
-  `channels`, `permissions`, plus the folder of each `registries` glob in `tatara.json`
+  `channels`, `permissions`, `workflows`, `activities`, `workflow-schedules`, plus the folder of each `registries` glob in `tatara.json`
   (`src/modules/*/<folder>/…`, or `src/modules/<module>/<folder>/…` for one module).
 - `*.test.ts` files live in a `tests/` folder (`src/modules/<module>/tests/`, or top-level `tests/`).
 

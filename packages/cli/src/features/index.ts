@@ -11,6 +11,7 @@ import {
 	observability,
 	realtime,
 	storage,
+	temporal,
 } from "./addons.ts";
 import {
 	auth,
@@ -45,6 +46,7 @@ export const FEATURES: Record<string, Feature> = Object.fromEntries(
 		auth,
 		authz,
 		jobs,
+		temporal,
 		events,
 		cache,
 		notifications,

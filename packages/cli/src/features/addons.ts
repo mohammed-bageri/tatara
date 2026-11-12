@@ -267,6 +267,119 @@ export const jobs: Feature = {
 	],
 };
 
+export const temporal: Feature = {
+	id: "temporal",
+	kind: "addon",
+	label: "Durable workflows (Temporal)",
+	dependencies: [
+		"@tatara/temporal",
+		"@temporalio/client",
+		"@temporalio/worker",
+		"@temporalio/workflow",
+		"@temporalio/activity",
+		"@temporalio/common",
+	],
+	// swc (the workflow bundler) checks its native binding; protobufjs (@temporalio/proto) checks versions
+	allowBuilds: ["@swc/core", "protobufjs"],
+	scripts: {
+		"start:temporal-worker": "node dist/apps/temporal-worker/index.mjs",
+	},
+	env: [
+		{
+			key: "TEMPORAL_PORT",
+			schema: "",
+			example: "7233",
+			composeOnly: true,
+			comment: "Host port for the local Temporal dev server",
+		},
+		{
+			key: "TEMPORAL_UI_PORT",
+			schema: "",
+			example: "8233",
+			composeOnly: true,
+			comment: "Host port for the local Temporal web UI",
+		},
+		{ key: "TEMPORAL_ADDRESS", schema: "z.string().min(1)", example: "localhost:7233" },
+		{ key: "TEMPORAL_NAMESPACE", schema: 'z.string().default("default")', example: "default" },
+		{
+			key: "TEMPORAL_TASK_QUEUE",
+			schema: 'z.string().default("__APP_NAME__")',
+			example: "__APP_NAME__",
+			comment: "The queue this app's worker polls; starts and schedules use it by default",
+		},
+		{
+			key: "TEMPORAL_API_KEY",
+			schema: "z.string().optional()",
+			example: "",
+			comment: "Temporal Cloud API key (turns TLS on)",
+		},
+		{
+			key: "TEMPORAL_SCHEDULES_PAUSED",
+			schema: "z.stringbool().default(false)",
+			example: "false",
+			dev: "true",
+			comment: "Create new schedules paused (keep it on outside production)",
+		},
+	],
+	compose: {
+		temporal: {
+			image: "temporalio/temporal:1.10.0",
+			command: ["server", "start-dev", "--ip", "0.0.0.0"],
+			ports: ["${TEMPORAL_PORT:-7233}:7233", "${TEMPORAL_UI_PORT:-8233}:8233"],
+			healthcheck: {
+				test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"],
+				interval: "2s",
+				timeout: "5s",
+				retries: 30,
+			},
+		},
+	},
+	slots: [
+		{
+			file: "tsdown.config.ts",
+			slot: "entries",
+			content:
+				'"apps/temporal-worker/index": "src/apps/temporal-worker/index.ts",\n// the worker bundles workflows from this file at startup\n"workflows": "src/generated/workflows.ts",',
+		},
+		{
+			file: "src/apps/http.ts",
+			slot: "imports",
+			content: 'import { mapTemporalErrors } from "#core/temporal/index";',
+		},
+		{
+			// Temporal down must not turn work the request already did into a 500
+			file: "src/apps/http.ts",
+			slot: "error-options",
+			content: "mapError: [mapTemporalErrors],",
+		},
+		{
+			file: "AGENTS.md",
+			slot: "sections",
+			content: `## Workflows (Temporal)
+
+- Use Temporal for work that waits (on a person, an outside system, a timer) or must survive
+  restarts step by step. Use jobs for fire-and-forget work.
+- A module's workflows live in \`workflows/<name>.ts\` as exported async functions. **Workflow code
+  must be deterministic**: import only \`@temporalio/workflow\`, types, and pure helpers; no I/O, no
+  \`Date.now()\` or \`Math.random()\` (use the workflow API's \`sleep\`, \`condition\`, signals).
+- Side effects go in activities: \`activities/<name>.ts\` default-exports
+  \`defineActivities({ async doThing(...) {} })\`. Workflows call them through
+  \`proxyActivities<Activities>({ startToCloseTimeout })\` (\`import type { Activities } from "#generated/activities"\`).
+  Activities can be retried: make them idempotent.
+- Start and signal from routes and services with \`temporal\` from \`#core/temporal/index\`:
+  \`temporal.start(workflowFn, { workflowId, args })\`. A start with a running id returns that run, so
+  pick ids that name the business thing (\`approval-<id>\`). Temporal being down throws
+  \`TemporalUnavailableError\`, answered as 503.
+- Recurring workflows: \`workflow-schedules/<name>.ts\` (\`defineWorkflowSchedule({ id, workflow, cron, timezone? })\`),
+  synced by the \`temporal:schedules\` deploy command. New schedules start paused when
+  \`TEMPORAL_SCHEDULES_PAUSED\` is on (the local default).
+- Process: \`apps/temporal-worker\` runs the workflows and activities; \`dev\` starts it. The local
+  Temporal UI is on port \`TEMPORAL_UI_PORT\` (8233).
+`,
+		},
+	],
+};
+
 export const events: Feature = {
 	id: "events",
 	kind: "addon",
@@ -786,6 +899,13 @@ export const observability: Feature = {
 			when: ["admin"],
 			scripts: {
 				"start:admin": "node --import ./dist/apps/instrument.mjs dist/apps/admin/server.mjs",
+			},
+		},
+		{
+			when: ["temporal"],
+			scripts: {
+				"start:temporal-worker":
+					"node --import ./dist/apps/instrument.mjs dist/apps/temporal-worker/index.mjs",
 			},
 		},
 	],

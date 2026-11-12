@@ -5,6 +5,7 @@ export type AuthMethod = "email-otp" | "phone-otp" | "password" | "keycloak" | "
 export type Addon =
 	| "authz"
 	| "jobs"
+	| "temporal"
 	| "events"
 	| "cache"
 	| "notifications"

@@ -29,6 +29,9 @@ export function devProcesses(project: Project): Process[] {
 		list.push({ name: "worker", file: "src/apps/worker/index.ts", color: pc.yellow });
 		list.push({ name: "cron", file: "src/apps/cron/index.ts", color: pc.blue });
 	}
+	if (project.has("temporal")) {
+		list.push({ name: "temporal", file: "src/apps/temporal-worker/index.ts", color: pc.green });
+	}
 	return list;
 }
 
@@ -55,7 +58,7 @@ function prefixed(child: ChildProcess, label: string) {
 }
 
 const CONVENTION =
-	/\/(routes|commands|consumers|schedules|permissions|db|emails|notifications|channels)\/[^/]+\.ts$/;
+	/\/(routes|commands|consumers|schedules|workflows|activities|workflow-schedules|permissions|db|emails|notifications|channels)\/[^/]+\.ts$/;
 
 /** Re-runs `tatara sync` when convention files appear or disappear, so --watch picks them up. */
 function watchConventions(project: Project): FSWatcher[] {

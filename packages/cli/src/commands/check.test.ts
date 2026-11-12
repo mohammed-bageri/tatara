@@ -137,6 +137,9 @@ describe("check: module folders", () => {
 				"notifications",
 				"channels",
 				"permissions",
+				"workflows",
+				"activities",
+				"workflow-schedules",
 			].map((folder) => [`src/modules/billing/${folder}/x.ts`, ""]),
 		);
 		expect(await rules(files)).toEqual([]);
