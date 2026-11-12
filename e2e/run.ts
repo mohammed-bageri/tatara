@@ -48,7 +48,20 @@ function args() {
 
 /** Moves every local port by `offset` and gives the compose project a unique name. */
 function remapPorts(dir: string, offset: number, project: string) {
-	const ports = ["5432", "3306", "6379", "9000", "9001", "1025", "8025", "8080", "3000", "3001"];
+	const ports = [
+		"5432",
+		"3306",
+		"6379",
+		"9000",
+		"9001",
+		"1025",
+		"8025",
+		"8080",
+		"3000",
+		"3001",
+		"7233",
+		"8233",
+	];
 	for (const file of [".env", ".env.test"]) {
 		const path = join(dir, file);
 		if (!existsSync(path)) continue;
@@ -58,7 +71,7 @@ function remapPorts(dir: string, offset: number, project: string) {
 			text = text.replace(new RegExp(`(localhost:)${port}\\b`, "g"), `$1${next}`);
 			text = text.replace(
 				new RegExp(
-					`^((?:DB|REDIS|STORAGE|STORAGE_CONSOLE|MAILPIT_SMTP|MAILPIT_UI|KEYCLOAK|ADMIN)_PORT|PORT)=${port}$`,
+					`^((?:DB|REDIS|STORAGE|STORAGE_CONSOLE|MAILPIT_SMTP|MAILPIT_UI|KEYCLOAK|ADMIN|TEMPORAL|TEMPORAL_UI)_PORT|PORT)=${port}$`,
 					"gm",
 				),
 				`$1=${next}`,
@@ -573,6 +586,50 @@ s.on("rt", (m) => { if (m.ev !== "e2e.ping") return; clearTimeout(fail); console
 			expect(scheduled.code === 0, `schedule:run: ${scheduled.out.slice(-300)}`);
 			notes.push("jobs");
 		}
+
+		if (s.addons.includes("temporal")) {
+			const workerLog = join(logDir, "temporal-worker.log");
+			children.push(start(dir, "dist/apps/temporal-worker/index.mjs", workerLog));
+			const started = await run(
+				"node",
+				[
+					"--env-file=.env",
+					"dist/apps/cli/index.mjs",
+					"temporal:start",
+					"--workflow",
+					"exampleGreeting",
+					"--id",
+					"e2e-greeting",
+					"--args",
+					'["E2E"]',
+				],
+				{ cwd: dir },
+			);
+			expect(started.code === 0, `temporal:start: ${started.out.slice(-300)}`);
+			// the built worker bundles dist/workflows.mjs and runs the workflow and its activity
+			const result = await run(
+				"docker",
+				[
+					"compose",
+					"exec",
+					"-T",
+					"temporal",
+					"temporal",
+					"workflow",
+					"result",
+					"--workflow-id",
+					"e2e-greeting",
+					"--address",
+					"127.0.0.1:7233",
+				],
+				{ cwd: dir },
+			);
+			expect(
+				result.code === 0 && result.out.includes("Hello, E2E!"),
+				`workflow result: ${result.out.slice(-300)}\n${readFileSync(workerLog, "utf8").slice(-600)}`,
+			);
+			notes.push("temporal");
+		}
 	} finally {
 		for (const child of children) child.kill("SIGTERM");
 		await new Promise((r) => setTimeout(r, 500));
@@ -590,6 +647,13 @@ const GENERATORS: { kind: string; name: string; when?: (s: Scenario) => boolean 
 	{ kind: "consumer", name: "invoice-paid", when: (s) => s.addons.includes("jobs") },
 	{ kind: "schedule", name: "nightly-close", when: (s) => s.addons.includes("jobs") },
 	{ kind: "permission", name: "ledger", when: (s) => s.addons.includes("authz") },
+	{ kind: "activity", name: "send-statement", when: (s) => s.addons.includes("temporal") },
+	{ kind: "workflow", name: "month-end", when: (s) => s.addons.includes("temporal") },
+	{
+		kind: "workflow-schedule",
+		name: "month-end",
+		when: (s) => s.addons.includes("temporal"),
+	},
 ];
 
 async function runScenario(

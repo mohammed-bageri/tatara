@@ -3,6 +3,8 @@ packages:
 allowBuilds:
   # its preinstall script only echoes
   '@google/genai': false
+  # its postinstall only checks the native binding; the binary comes from an optional dependency
+  '@swc/core': false
   esbuild: true
   msgpackr-extract: false
   # its install script only checks versions; OTLP over HTTP/JSON never loads it

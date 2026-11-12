@@ -20,6 +20,9 @@ export const GENERATORS = [
 	"command",
 	"consumer",
 	"schedule",
+	"workflow",
+	"activity",
+	"workflow-schedule",
 	"permission",
 ] as const;
 
@@ -47,6 +50,9 @@ const REQUIRES: Partial<Record<GeneratorKind, { feature: string; hint: string }>
 	schema: { feature: "db", hint: "it needs a database" },
 	consumer: { feature: "jobs", hint: "it needs the jobs add-on" },
 	schedule: { feature: "jobs", hint: "it needs the jobs add-on" },
+	workflow: { feature: "temporal", hint: "it needs the temporal add-on" },
+	activity: { feature: "temporal", hint: "it needs the temporal add-on" },
+	"workflow-schedule": { feature: "temporal", hint: "it needs the temporal add-on" },
 	permission: { feature: "authz", hint: "it needs the authz add-on" },
 };
 

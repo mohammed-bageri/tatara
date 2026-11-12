@@ -1,0 +1,79 @@
+{
+	"name": "@tatara/temporal",
+	"version": "0.0.0",
+	"description": "tatara Temporal: a lazy client with guarded starts, a worker runner with graceful shutdown, activity merging, and schedules synced on deploy",
+	"type": "module",
+	"license": "MIT",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		},
+		"./worker": {
+			"types": "./dist/worker.d.mts",
+			"import": "./dist/worker.mjs"
+		},
+		"./commands": {
+			"types": "./dist/commands.d.mts",
+			"import": "./dist/commands.mjs"
+		}
+	},
+	"files": [
+		"dist",
+		"src",
+		"!src/**/*.test.ts"
+	],
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit"
+	},
+	"peerDependencies": {
+		"@temporalio/client": "^1.25.0",
+		"@temporalio/worker": "^1.25.0",
+		"@temporalio/common": "^1.25.0",
+		"zod": "^4.6.7",
+		"@tatara/core": "^0.2.2"
+	},
+	"devDependencies": {
+		"@temporalio/client": "^1.25.0",
+		"@temporalio/worker": "^1.25.0",
+		"@temporalio/common": "^1.25.0",
+		"@temporalio/workflow": "^1.25.0",
+		"zod": "^4.6.7",
+		"@tatara/core": "workspace:^",
+		"pino": "^10.4.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mohammed-bageri/tatara.git",
+		"directory": "packages/temporal"
+	},
+	"homepage": "https://github.com/mohammed-bageri/tatara#readme",
+	"bugs": {
+		"url": "https://github.com/mohammed-bageri/tatara/issues"
+	},
+	"tatara": {
+		"commands": [
+			{
+				"import": "@tatara/temporal/commands",
+				"factory": "temporalCommands",
+				"args": {
+					"temporal": "#core/temporal/index",
+					"workflowSchedules": "#generated/workflow-schedules"
+				}
+			}
+		]
+	},
+	"peerDependenciesMeta": {
+		"@temporalio/worker": {
+			"optional": true
+		}
+	}
+}

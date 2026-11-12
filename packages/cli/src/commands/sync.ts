@@ -19,6 +19,9 @@ function identifier(path: string, prefix: string): string {
 		"commands",
 		"consumers",
 		"schedules",
+		"workflows",
+		"activities",
+		"workflow-schedules",
 		"permissions",
 		"db",
 		"emails",
@@ -120,6 +123,26 @@ export type EventName = keyof EventPayloads;
 `;
 }
 
+/**
+ * The worker bundles this file with Temporal's sandboxed bundler: it only re-exports each module's
+ * workflows, by relative path, so nothing outside workflow code is pulled in.
+ */
+function workflowList(files: string[]): string {
+	const lines = files.map((f) => `export * from "../${f.replace(/^src\//, "")}";`);
+	return `${HEADER}${lines.join("\n")}${lines.length ? "\n" : ""}export {};\n`;
+}
+
+/** Every module's activity set as one map; a duplicate activity name throws when it loads. */
+function activityList(files: string[]): string {
+	const imports = files.map((f) => `import ${identifier(f, "activities")} from "${specifier(f)}";`);
+	const names = files.map((f) => identifier(f, "activities"));
+	return `${HEADER}import { mergeActivities } from "@tatara/temporal";
+${imports.join("\n")}${imports.length ? "\n" : ""}
+export const activities = mergeActivities(${names.join(", ")});
+export type Activities = typeof activities;
+`;
+}
+
 /** A command or seed factory a @tatara/* package declares in its package.json "tatara" field. */
 interface Contribution {
 	import: string;
@@ -215,6 +238,8 @@ const BUILT_IN = [
 	"commands",
 	"consumers",
 	"schedules",
+	"workflows",
+	"activities",
 	"events",
 	"subscribers",
 	"emails",
@@ -398,6 +423,33 @@ export async function sync(project: Project = loadProject()): Promise<SyncResult
 				typeImport: 'import type { ScheduleDefinition } from "@tatara/jobs";',
 				typeName: "ScheduleDefinition",
 				exportName: "schedules",
+			}),
+			written,
+		);
+	}
+
+	if (project.has("temporal")) {
+		const workflows = await find(
+			root,
+			dirs.map((d) => `${d}/workflows/*.ts`),
+		);
+		await write(join(out, "workflows.ts"), workflowList(workflows), written);
+		const activities = await find(
+			root,
+			dirs.map((d) => `${d}/activities/*.ts`),
+		);
+		await write(join(out, "activities.ts"), activityList(activities), written);
+		const workflowSchedules = await find(
+			root,
+			dirs.map((d) => `${d}/workflow-schedules/*.ts`),
+		);
+		await write(
+			join(out, "workflow-schedules.ts"),
+			listModule(workflowSchedules, {
+				prefix: "workflowSchedule",
+				typeImport: 'import type { WorkflowScheduleDefinition } from "@tatara/temporal";',
+				typeName: "WorkflowScheduleDefinition",
+				exportName: "workflowSchedules",
 			}),
 			written,
 		);
