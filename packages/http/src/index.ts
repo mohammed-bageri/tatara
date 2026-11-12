@@ -1,6 +1,8 @@
 /** @tatara/http: plain Hono/OpenAPIHono setup, errors, the response envelope and docs. */
 export {
+	type CorsOriginOptions,
 	type CreateAppOptions,
+	type CreateRouterOptions,
 	codeTranslator,
 	corsOrigin,
 	createApp,

@@ -35,7 +35,8 @@ async function activeMembership(auth: SessionAuth, userId: string, orgId: unknow
 /**
  * The better-auth session (cookie or bearer token) as a principal; none while the admin plugin's ban
  * is in force (better-auth keeps a banned user's live sessions). Roles come from the plugin's `role`;
- * `claims` holds the session user (email, name, the app's additional fields).
+ * `claims` holds the session user (email, name, the app's additional fields) and the session identity
+ * (id, impersonatedBy, expiresAt) under the `session` key.
  */
 export async function sessionPrincipal(
 	auth: SessionAuth,
@@ -44,8 +45,13 @@ export async function sessionPrincipal(
 	const session = await auth.api.getSession({ headers });
 	if (!session || isBannedNow(session.user)) return null;
 	const user = session.user as { id: string; role?: string | null };
-	const { activeOrganizationId } = session.session as { activeOrganizationId?: string | null };
-	const membership = await activeMembership(auth, user.id, activeOrganizationId);
+	const sessionObj = session.session as {
+		id: string;
+		expiresAt: Date;
+		impersonatedBy?: string;
+		activeOrganizationId?: string | null;
+	};
+	const membership = await activeMembership(auth, user.id, sessionObj.activeOrganizationId);
 	return {
 		userId: user.id,
 		orgId: membership?.orgId ?? null,
@@ -56,7 +62,14 @@ export async function sessionPrincipal(
 			.filter(Boolean),
 		kind: "user",
 		// the identity's attributes (email, name, the app's own user fields), as a token carries claims
-		claims: { ...(session.user as Record<string, unknown>) },
+		claims: {
+			...(session.user as Record<string, unknown>),
+			session: {
+				id: sessionObj.id,
+				impersonatedBy: sessionObj.impersonatedBy ?? null,
+				expiresAt: sessionObj.expiresAt,
+			},
+		},
 	};
 }
 

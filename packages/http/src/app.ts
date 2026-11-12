@@ -10,7 +10,13 @@ import { secureHeaders } from "hono/secure-headers";
 import { AppError, TooManyRequestsError, ValidationError } from "./errors.ts";
 import { errorBody } from "./response.ts";
 import { requestTimeout, type TimeoutOptions } from "./timeout.ts";
-import { type IssueLike, validationError, validationHook } from "./validation.ts";
+import {
+	createValidationHook,
+	type IssueLike,
+	type ValidationHookOptions,
+	validationError,
+	validationHook,
+} from "./validation.ts";
 
 /** Variables every tatara app has; apps extend them with their own (principal, language, …). */
 export interface HttpEnv {
@@ -62,15 +68,25 @@ export interface CreateAppOptions<E extends HttpEnv> {
 	redactPath?: (path: string) => string;
 }
 
-/** Matches exact origins and `*.`-patterns, where `*` is exactly one DNS label (tenant subdomains). */
-export function corsOrigin(origins: string[]): (origin: string) => string | null {
+export interface CorsOriginOptions {
+	/** `*` matches one or more DNS labels (a.b.example.com), not exactly one; the apex still needs its own entry */
+	nestedSubdomains?: boolean;
+}
+
+/** Matches exact origins and `*.`-patterns, where `*` is one DNS label (tenant subdomains), or any depth with `nestedSubdomains`. */
+export function corsOrigin(
+	origins: string[],
+	options: CorsOriginOptions = {},
+): (origin: string) => string | null {
+	const label = "[a-z0-9-]+";
+	const wildcard = options.nestedSubdomains ? `${label}(?:\\.${label})*` : label;
 	const exact = new Set(origins.filter((o) => !o.includes("*")));
 	const patterns = origins
 		.filter((o) => o.includes("*"))
 		.map((o) => {
 			if (!/^https?:\/\/\*\.[^*]+$/.test(o))
 				throw new Error(`CORS origin pattern "${o}" must look like https://*.example.com`);
-			const escaped = o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace("*", "[a-z0-9-]+");
+			const escaped = o.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace("*", wildcard);
 			return new RegExp(`^${escaped}$`, "i");
 		});
 	return (origin) => (exact.has(origin) || patterns.some((p) => p.test(origin)) ? origin : null);
@@ -120,9 +136,15 @@ export function defineRoutes<D extends RouteDefinition<string, any>>(definition:
 	return definition;
 }
 
+export interface CreateRouterOptions {
+	/** Options for validation hook behavior (message format, status code, detail shape) */
+	validation?: ValidationHookOptions;
+}
+
 /** A router for one routes file. Attach middleware per route or per path, never `use("*")`. */
-export function createRouter<E extends HttpEnv>(): OpenAPIHono<E> {
-	return new OpenAPIHono<E>({ defaultHook: validationHook });
+export function createRouter<E extends HttpEnv>(options: CreateRouterOptions = {}): OpenAPIHono<E> {
+	const hook = options.validation ? createValidationHook(options.validation) : validationHook;
+	return new OpenAPIHono<E>({ defaultHook: hook });
 }
 
 /** Mounts the discovered routes that belong to `app` under `prefix`. */
@@ -190,6 +212,8 @@ export interface HandleErrorsOptions<E extends HttpEnv> {
 	codes?: Record<string, string>;
 	/** the status for ValidationErrors without an explicit one and for thrown ZodErrors (default 400) */
 	validationStatus?: 400 | 422;
+	/** Options for validation errors converted from thrown ZodErrors (message format, detail shape) */
+	validation?: ValidationHookOptions;
 	/** put unhandled errors' message, name and stack in the response: development only */
 	exposeErrors?: boolean;
 	/** applied to an unhandled error before it is logged or exposed, e.g. `redactDbQueryErrors` from @tatara/db */
@@ -233,7 +257,8 @@ export function handleErrors<E extends HttpEnv>(
 				break;
 			}
 		}
-		if (!(err instanceof AppError) && isZodError(err)) err = validationError(err.issues);
+		if (!(err instanceof AppError) && isZodError(err))
+			err = validationError(err.issues, options.validation);
 		if (err instanceof AppError) {
 			if (err instanceof TooManyRequestsError)
 				c.header("Retry-After", String(err.retryAfterSeconds));

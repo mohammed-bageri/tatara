@@ -1,1 +1,1 @@
-export { migrateDatabase } from "@tatara/db/drizzle-postgres";
+export { migrateDatabase, migrationStatus } from "@tatara/db/drizzle-postgres";

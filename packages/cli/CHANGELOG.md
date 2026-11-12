@@ -1,5 +1,18 @@
 # @tatara/cli
 
+## 0.23.0
+
+### Minor Changes
+
+- 2e6f792: `tatara check`: no `../` in side-effect imports, `vi.mock` or `vi.importActual`; `*.test.ts` only under a `tests/` folder (`tests-location`); a module's folders must be ones tatara discovers or a `registries` glob's folder (`module-folders`). A routes file's `defineRoutes` `app` and `basePath` must be string literals (`literal-base-path`), so `duplicate-base-path` sees every mount.
+
+## 0.22.0
+
+### Minor Changes
+
+- 74c71d9: `tatara check` treats a module's `events/` as public, next to `services/` and `db/`: other modules import its domain event definitions to subscribe to them.
+- 74c71d9: Every Drizzle app gets `db:migration-status`. `@tatara/db/drizzle-postgres` and `/drizzle-mysql` export `migrationStatus(url)`, the scaffolded `src/core/db/migrate.ts` re-exports it, and `tatara sync` passes it to `dbCommands` when that file exports it (manifest args listed under `optional` are passed only when exported). `tatara upgrade` adds it to an unchanged `src/core/db/migrate.ts` in existing Drizzle apps.
+
 ## 0.21.3
 
 ### Patch Changes

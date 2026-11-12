@@ -1,5 +1,11 @@
 # @tatara/events
 
+## 0.4.0
+
+### Minor Changes
+
+- 532ba08: Add optional `eventNamePattern` parameter to `createEvents(options)` to enforce custom event naming conventions (RegExp or validator function).
+
 ## 0.3.0
 
 ### Minor Changes

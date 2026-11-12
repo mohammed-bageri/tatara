@@ -11,12 +11,10 @@ export function trustedClientIp(
 	trustedHops: number,
 ): string | undefined {
 	if (!forwardedFor || trustedHops <= 0) return undefined;
-	const hops = forwardedFor
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter(Boolean);
-	if (hops.length === 0) return undefined;
-	return hops[Math.max(0, hops.length - trustedHops)];
+	// an empty entry still counts as a hop, so it can't shift trust onto a client-sent one
+	const hops = forwardedFor.split(",").map((entry) => entry.trim());
+	const entry = hops[Math.max(0, hops.length - trustedHops)];
+	return entry && isIP(entry) !== 0 ? entry : undefined;
 }
 
 /**

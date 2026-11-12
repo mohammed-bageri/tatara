@@ -1,5 +1,23 @@
 # @tatara/http
 
+## 0.8.1
+
+### Patch Changes
+
+- f33ac36: `trustedClientIp` counts an empty X-Forwarded-For entry as a hop and returns only a valid IP, so a trailing empty entry no longer hands trust to a client-sent address.
+
+## 0.8.0
+
+### Minor Changes
+
+- 74c71d9: `corsOrigin(origins, { nestedSubdomains: true })`: a `https://*.example.com` pattern also matches deeper subdomains (`a.b.example.com`). Off by default; still https-only, dot-bounded, apex not included.
+
+## 0.7.0
+
+### Minor Changes
+
+- 60bffa9: Add optional `validation` parameter to `createRouter(options)` and `handleErrors(options)` to customize validation hook behavior. Allows configuring message format (`"generic"` or `"first-issue"`), status code, and detail shape. Defaults remain unchanged for backward compatibility.
+
 ## 0.6.1
 
 ### Patch Changes

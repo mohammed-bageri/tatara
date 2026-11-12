@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/db",
-	"version": "0.3.3",
+	"version": "0.4.0",
 	"description": "tatara database helpers: ids, seeds, database errors, per-driver admin, per-ORM migrations, explain and tinker",
 	"type": "module",
 	"license": "MIT",
@@ -108,8 +108,12 @@
 					"env": "#core/config/env",
 					"migrateDatabase": "#core/db/migrate",
 					"dropAllTables": "#core/db/admin",
-					"seeds": "#generated/seeds"
-				}
+					"seeds": "#generated/seeds",
+					"migrationStatus": "#core/db/migrate"
+				},
+				"optional": [
+					"migrationStatus"
+				]
 			}
 		]
 	}

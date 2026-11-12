@@ -1,4 +1,4 @@
-import { AppError, ForbiddenError, UnauthorizedError } from "@tatara/http";
+import { ForbiddenError, UnauthorizedError } from "@tatara/http";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import type { Context, Env, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";

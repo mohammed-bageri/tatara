@@ -7,7 +7,7 @@ helpers, migration status, per-driver admin, `explain` and a REPL.
 |---|---|
 | `@tatara/db` | `newId`, `defineSeed`, error helpers, `drizzleMigrationStatus` |
 | `@tatara/db/postgres` · `/mariadb` · `/mysql2` | `ensureDatabase`, `dropAllTables`, `truncateAllTables`; `explain`, `explainText` (Postgres) |
-| `@tatara/db/prisma` · `/drizzle-postgres` · `/drizzle-mysql` | `migrateDatabase`; `appliedMigrations` (Drizzle) |
+| `@tatara/db/prisma` · `/drizzle-postgres` · `/drizzle-mysql` | `migrateDatabase`; `appliedMigrations`, `migrationStatus` (Drizzle) |
 | `@tatara/db/commands` | `dbCommands`: `db:migrate`, `db:reset`, `db:seed`, `db:migration-status` |
 | `@tatara/db/tinker` | `tinkerCommand`, `startTinker`, `loadServices`, `drizzleOperators` |
 
@@ -31,12 +31,14 @@ Postgres `detail`/`where` and the MySQL drivers' `sql`. A MySQL message itself (
 ## Migration status and tinker
 
 ```ts
-import { drizzleMigrationStatus } from "@tatara/db";
-import { appliedMigrations } from "@tatara/db/drizzle-postgres";
+// src/core/db/migrate.ts in a Drizzle app; `tatara sync` passes migrationStatus to dbCommands
+// when this file exports it, which adds db:migration-status
+export { migrateDatabase, migrationStatus } from "@tatara/db/drizzle-postgres";
+```
+
+```ts
 import { tinkerCommand, loadServices, drizzleOperators } from "@tatara/db/tinker";
 import * as orm from "drizzle-orm";
-
-dbCommands({ ..., migrationStatus: async (url) => drizzleMigrationStatus("drizzle", await appliedMigrations(url)) });
 
 export default tinkerCommand({
 	context: async () => ({ db, ...schema, ...drizzleOperators(orm), services: await loadServices() }),

@@ -13,6 +13,7 @@ import { frameworkTests } from "./codemods/framework-tests.ts";
 import { httpLimits } from "./codemods/http-limits.ts";
 import { httpPackage } from "./codemods/http-package.ts";
 import { jobsDrivers } from "./codemods/jobs-drivers.ts";
+import { migrationStatus } from "./codemods/migration-status.ts";
 import { notifierRoles } from "./codemods/notifier-roles.ts";
 import { packageCommands } from "./codemods/package-commands.ts";
 import { tablesInModules } from "./codemods/tables-in-modules.ts";
@@ -50,4 +51,5 @@ export const CODEMODS: readonly Codemod[] = [
 	notifierRoles,
 	tablesInModules,
 	errorOptions,
+	migrationStatus,
 ];

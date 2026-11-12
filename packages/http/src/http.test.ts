@@ -183,6 +183,25 @@ describe("routes and OpenAPI", () => {
 		expect((await post("/api/secret")).status).toBe(404);
 	});
 
+	it("allows one base path on both apps", async () => {
+		const ping = (name: string) => {
+			const r = createRouter<Env>();
+			r.get("/", (c) => c.text(name));
+			return r;
+		};
+		const shared = [
+			defineRoutes({ app: "api", basePath: "/support", router: ping("api") }),
+			defineRoutes({ app: "admin", basePath: "/support", router: ping("admin") }),
+		];
+		const api = app();
+		mountRoutes(api, shared, { app: "api", prefix: "/api" });
+		const admin = app();
+		mountRoutes(admin, shared, { app: "admin", prefix: "/admin" });
+		expect(await (await api.request("/api/support")).text()).toBe("api");
+		expect((await api.request("/admin/support")).status).toBe(404);
+		expect(await (await admin.request("/admin/support")).text()).toBe("admin");
+	});
+
 	it("validates bodies and rejects a missing one with 400", async () => {
 		const a = mounted();
 		expect((await a.request("/api/notes", { method: "POST" })).status).toBe(400);

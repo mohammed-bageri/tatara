@@ -1,5 +1,25 @@
 # @tatara/auth
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [74c71d9]
+  - @tatara/http@0.8.0
+
+## 0.7.0
+
+### Minor Changes
+
+- d62c8a1: Add session identity to sessionPrincipal claims. Claims now include `session: { id, impersonatedBy, expiresAt }` for binding realtime resources and detecting staff impersonation. User fields remain unchanged.
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [60bffa9]
+  - @tatara/http@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes

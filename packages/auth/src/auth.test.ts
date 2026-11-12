@@ -91,6 +91,29 @@ describe("principalMiddleware + sessionPrincipal", () => {
 		expect((await res.json()).claims).toMatchObject({ email: "sara@example.com", name: "Sara" });
 	});
 
+	it("includes session identity in claims", async () => {
+		const userId = await createTestUser(auth);
+		const res = await app().request("/me", { headers: await sessionHeaders(auth, userId) });
+		const { claims } = await res.json();
+		expect(claims.session).toMatchObject({
+			id: expect.any(String),
+			impersonatedBy: null,
+			expiresAt: expect.any(String),
+		});
+	});
+
+	it("carries impersonatedBy when session is impersonated", async () => {
+		const userId = await createTestUser(auth);
+		const headers = await sessionHeaders(auth, userId);
+		// Simulate impersonation by directly modifying the session in the db
+		const sessions = db.session as Array<{ userId: string; impersonatedBy?: string }>;
+		const userSession = sessions.find((s) => s.userId === userId);
+		if (userSession) userSession.impersonatedBy = "admin-user-id";
+		const res = await app().request("/me", { headers });
+		const { claims } = await res.json();
+		expect(claims.session.impersonatedBy).toBe("admin-user-id");
+	});
+
 	it("defaults roles to user", async () => {
 		const userId = await createTestUser(auth);
 		const res = await app().request("/me", { headers: await sessionHeaders(auth, userId) });
@@ -112,7 +135,9 @@ describe("principalMiddleware + sessionPrincipal", () => {
 
 	it("falls through to the next resolver without a session", async () => {
 		const res = await app().request("/me", { headers: { "x-service": "1" } });
-		expect(await res.json()).toMatchObject({ userId: "svc", kind: "service" });
+		const principal = await res.json();
+		expect(principal).toMatchObject({ userId: "svc", kind: "service" });
+		expect(principal.claims.session).toBeUndefined();
 	});
 
 	it("leaves the principal null when nothing matches", async () => {

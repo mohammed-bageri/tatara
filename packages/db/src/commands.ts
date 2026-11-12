@@ -10,10 +10,7 @@ export interface DbCommandsOptions {
 	dropAllTables(url: string): Promise<void>;
 	/** every seed `tatara sync` found */
 	seeds: SeedDefinition[];
-	/**
-	 * Adds `db:migration-status` (read-only), e.g.
-	 * `(url) => appliedMigrations(url).then((m) => drizzleMigrationStatus("drizzle", m))`.
-	 */
+	/** Adds `db:migration-status` (read-only); a Drizzle app's migrate.ts re-exports the driver's. */
 	migrationStatus?(url: string): Promise<MigrationStatusReport>;
 }
 
