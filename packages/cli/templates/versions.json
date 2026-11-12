@@ -47,7 +47,7 @@
   "@tatara/email": "0.4.2",
   "@tatara/i18n": "0.5.0",
   "@tatara/jobs": "0.5.3",
-  "@tatara/temporal": "0.0.0",
+  "@tatara/temporal": "0.1.0",
   "@tatara/events": "0.4.0",
   "@tatara/ai": "0.2.0",
   "@google/genai": "1.52.0",
