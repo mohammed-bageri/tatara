@@ -1,6 +1,6 @@
 {
 	"name": "@tatara/temporal",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"description": "tatara Temporal: a lazy client with guarded starts, a worker runner with graceful shutdown, activity merging, and schedules synced on deploy",
 	"type": "module",
 	"license": "MIT",
