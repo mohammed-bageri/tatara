@@ -36,6 +36,9 @@ const MODULE_FOLDERS = [
 	"notifications",
 	"channels",
 	"permissions",
+	"workflows",
+	"activities",
+	"workflow-schedules",
 ];
 
 const TEST_FILE = /\.test\.ts$/;
