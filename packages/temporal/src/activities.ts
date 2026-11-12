@@ -7,7 +7,7 @@ type Merge<T extends readonly ActivitySet[]> = T extends readonly [
 	...infer Tail extends readonly ActivitySet[],
 ]
 	? Head & Merge<Tail>
-	: unknown;
+	: Record<never, never>;
 
 /** Default export of every `activities/*.ts`: the activities that module gives the worker. */
 export function defineActivities<const A extends ActivitySet>(activities: A): A {
