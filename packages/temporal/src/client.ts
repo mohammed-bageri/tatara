@@ -91,7 +91,8 @@ export function createTemporal(
 			(error: unknown) => {
 				// the next call tries again instead of failing forever
 				pending = undefined;
-				throw error;
+				// grpc-js rejects with a plain Error ("Failed to connect before the deadline")
+				throw new TemporalUnavailableError("Temporal is unavailable", { cause: error });
 			},
 		);
 		return pending;
@@ -101,7 +102,7 @@ export function createTemporal(
 		try {
 			return await fn(await client());
 		} catch (error) {
-			if (isTemporalUnavailable(error)) {
+			if (!(error instanceof TemporalUnavailableError) && isTemporalUnavailable(error)) {
 				throw new TemporalUnavailableError("Temporal is unavailable", { cause: error });
 			}
 			throw error;

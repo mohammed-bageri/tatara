@@ -44,10 +44,21 @@ describe("createTemporal", () => {
 		expect(connect).toHaveBeenCalledTimes(2);
 	});
 
-	it("passes other errors through", async () => {
-		const connect = vi.fn().mockRejectedValue(new Error("bad config"));
-		const temporal = createTemporal(config, { connect });
-		await expect(temporal.check()).rejects.toThrow("bad config");
+	it("treats any connect failure as unavailable, keeping the cause", async () => {
+		const deadline = new Error("Failed to connect before the deadline");
+		const temporal = createTemporal(config, { connect: vi.fn().mockRejectedValue(deadline) });
+		const error = await temporal.start("greet", { workflowId: "w1", args: [] }).catch((e) => e);
+		expect(error).toBeInstanceOf(TemporalUnavailableError);
+		expect(error.cause).toBe(deadline);
+	});
+
+	it("passes errors from a connected call through", async () => {
+		const connection = {
+			workflowService: { getSystemInfo: vi.fn().mockRejectedValue(new Error("bad namespace")) },
+			close: vi.fn(),
+		};
+		const temporal = createTemporal(config, { connect: vi.fn().mockResolvedValue(connection) });
+		await expect(temporal.check()).rejects.toThrow("bad namespace");
 	});
 });
 
