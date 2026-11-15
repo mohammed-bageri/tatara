@@ -785,9 +785,16 @@ async function runScenario(
 		})) &&
 		(await step("without example templates", async () => {
 			// apps delete the examples; an empty convention folder must still compile
-			if (!s.addons.includes("email")) return "skipped";
-			rmSync(join(dir, "src/modules/example/emails"), { recursive: true, force: true });
-			await sh(pmRun[0] ?? "pnpm", [...pmRun.slice(1), "typecheck"], "typecheck-no-emails");
+			if (!s.addons.includes("email") && !s.addons.includes("temporal")) return "skipped";
+			if (s.addons.includes("email")) {
+				rmSync(join(dir, "src/modules/example/emails"), { recursive: true, force: true });
+				await sh(pmRun[0] ?? "pnpm", [...pmRun.slice(1), "typecheck"], "typecheck-no-emails");
+			}
+			if (s.addons.includes("temporal")) {
+				for (const p of ["activities", "workflows", "workflow-schedules", "tests/temporal.test.ts"])
+					rmSync(join(dir, "src/modules/example", p), { recursive: true, force: true });
+				await sh(pmRun[0] ?? "pnpm", [...pmRun.slice(1), "typecheck"], "typecheck-no-temporal");
+			}
 		})) &&
 		(await step("tatara add", async () => {
 			// growing an app later: jobs (and the cache it brings) onto one made without them

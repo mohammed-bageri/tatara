@@ -63,6 +63,11 @@ describe("createTemporal", () => {
 });
 
 describe("mergeActivities", () => {
+	it("gives an empty object for an app with no activities", () => {
+		const none: object = mergeActivities();
+		expect(none).toEqual({});
+	});
+
 	it("merges sets and rejects duplicate names", async () => {
 		const a = defineActivities({ one: async () => 1 });
 		const b = defineActivities({ two: async (x: string) => x });
