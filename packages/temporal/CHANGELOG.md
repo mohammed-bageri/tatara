@@ -1,5 +1,11 @@
 # @tatara/temporal
 
+## 0.1.1
+
+### Patch Changes
+
+- df9495d: `mergeActivities()` with no sets is typed as an empty object, so an app with no activities compiles.
+
 ## 0.1.0
 
 ### Minor Changes
