@@ -15,6 +15,7 @@ export {
 export type { JobDriver, Outgoing } from "./driver.ts";
 export { type InlineDriver, inlineDriver } from "./inline.ts";
 export { createJobs, type EnqueueOptions } from "./jobs.ts";
+export { type JobOutbox, type JobOutboxOptions, jobOutbox } from "./outbox.ts";
 export { lazyRedis, withLock } from "./redis.ts";
 export { startWorker, type WorkerOptions } from "./run.ts";
 export { backoffDelay, jobHandler, type Outcome } from "./runner.ts";

@@ -2,6 +2,8 @@ import { onShutdown } from "@tatara/core";
 import type { Kafka, Producer } from "kafkajs";
 import type { JobEnvelope } from "./define.ts";
 import type { JobDriver, Outgoing } from "./driver.ts";
+import { type JobOutboxOptions, jobOutbox, TRANSACTION_ERROR } from "./outbox.ts";
+import type { Queryable } from "./postgres.ts";
 
 export interface KafkaDriverOptions {
 	kafka: Kafka;
@@ -9,6 +11,8 @@ export interface KafkaDriverOptions {
 	topic: string;
 	/** one consumer group per app, so every job runs once across its workers */
 	groupId: string;
+	/** lets `enqueue(…, { executor: inTransaction(tx) })` work: see `jobOutbox` */
+	outbox?: JobOutboxOptions;
 }
 
 const NOT_BEFORE = "tatara-not-before";
@@ -67,18 +71,24 @@ export function kafkaDriver(options: KafkaDriverOptions): JobDriver {
 		});
 	};
 
+	const sendNow = async (jobs: Outgoing[]) => {
+		const now = jobs.filter((j) => j.delayMs <= 0);
+		const later = jobs.filter((j) => j.delayMs > 0);
+		if (now.length) await produce(options.topic, now);
+		if (later.length) await produce(delayed, later);
+	};
+	const outbox = options.outbox
+		? jobOutbox(options.outbox, `kafka:${options.topic}`, sendNow)
+		: undefined;
+
 	return {
 		name: "kafka",
 		async send(jobs, executor) {
 			if (executor !== undefined) {
-				throw new Error(
-					"Kafka driver can't enqueue inside a transaction; use the Postgres driver or enqueue after commit",
-				);
+				if (!outbox) throw new Error(`Kafka driver ${TRANSACTION_ERROR}`);
+				return outbox.write(jobs, executor as Queryable);
 			}
-			const now = jobs.filter((j) => j.delayMs <= 0);
-			const later = jobs.filter((j) => j.delayMs > 0);
-			if (now.length) await produce(options.topic, now);
-			if (later.length) await produce(delayed, later);
+			await sendNow(jobs);
 		},
 		async consume(handle, { concurrency, logger }) {
 			await ensureTopics();
@@ -122,9 +132,11 @@ export function kafkaDriver(options: KafkaDriverOptions): JobDriver {
 				c.on(c.events.CRASH, (event) =>
 					logger.error({ err: event.payload.error }, "kafka consumer crashed"),
 				);
+			const stopOutbox = outbox?.run();
 			return async () => {
 				// a waiting delayed message stays uncommitted and is picked up again after restart
 				running = false;
+				await stopOutbox?.();
 				await Promise.all([consumer.disconnect(), waiter.disconnect()]);
 			};
 		},

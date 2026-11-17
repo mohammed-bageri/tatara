@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { Kafka, logLevel } from "kafkajs";
 import pg from "pg";
@@ -13,6 +14,7 @@ import {
 	InvalidPayloadError,
 	inlineDriver,
 	type JobDriver,
+	type JobOutboxOptions,
 	jobHandler,
 	processJob,
 	runSchedule,
@@ -239,6 +241,142 @@ describe.skipIf(!DATABASE_URL)("the postgres driver as an outbox", { timeout: 30
 		await until(() => c.seen.length === 1);
 		await wait(300);
 		expect(c.seen.map((s) => s.data)).toEqual([{ noteId: "committed" }]);
+	});
+});
+
+type MakeWithOutbox = (
+	c: ReturnType<typeof consumers>["list"],
+	outbox: JobOutboxOptions,
+) => JobDriver;
+const outboxDrivers: [string, MakeWithOutbox | undefined][] = [
+	[
+		"inline",
+		(list, outbox) => inlineDriver({ consumers: list, logger, outbox, name: randomUUID() }),
+	],
+	[
+		"bullmq",
+		REDIS_URL
+			? (_, outbox) => {
+					const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
+					closers.push(() => redis.quit());
+					return bullmqDriver({
+						name: `t-${randomUUID()}`,
+						prefix: "tatara-test",
+						redis: () => redis,
+						outbox,
+					});
+				}
+			: undefined,
+	],
+	[
+		"kafka",
+		KAFKA_BROKERS
+			? (_, outbox) =>
+					kafkaDriver({
+						kafka: new Kafka({ brokers: KAFKA_BROKERS.split(","), logLevel: logLevel.NOTHING }),
+						topic: `t-${randomUUID()}`,
+						groupId: `g-${randomUUID()}`,
+						outbox,
+					})
+			: undefined,
+	],
+];
+
+for (const [name, make] of outboxDrivers) {
+	describe.skipIf(!DATABASE_URL || !make)(
+		`the ${name} driver with an outbox`,
+		{ timeout: 60_000 },
+		() => {
+			it("runs a job enqueued in a transaction once it commits, and never on rollback", async () => {
+				const c = consumers();
+				const driver = (make as MakeWithOutbox)(c.list, { db: pgPool(), logger, pollMs: 50 });
+				const jobs = createJobs({ driver, consumers: c.list });
+				const stop = await startWorker({ driver, consumers: c.list, concurrency: 2, logger });
+				onTestFinished(stop);
+				const client = await pgPool().connect();
+				try {
+					await client.query("begin");
+					await jobs.enqueue("notes.created", { noteId: "rolled-back" }, { executor: client });
+					await client.query("rollback");
+					await client.query("begin");
+					await jobs.enqueue(
+						"notes.created",
+						{ noteId: "committed" },
+						{ executor: client, orgId: "o1" },
+					);
+					await wait(200);
+					// nothing runs before the commit
+					expect(c.seen).toEqual([]);
+					await client.query("commit");
+				} finally {
+					client.release();
+				}
+				await until(() => c.seen.length === 1);
+				await wait(300);
+				expect(c.seen).toEqual([
+					{ topic: "notes.created", data: { noteId: "committed" }, orgId: "o1", attempt: 1 },
+				]);
+			});
+		},
+	);
+}
+
+describe.skipIf(!DATABASE_URL)("the inline driver with an outbox", { timeout: 30_000 }, () => {
+	it("drains the jobs of committed transactions, delays included", async () => {
+		const c = consumers();
+		// no fast path: only drain forwards
+		const driver = inlineDriver({
+			consumers: c.list,
+			logger,
+			outbox: { db: pgPool(), logger, fastPathMs: 0 },
+			name: randomUUID(),
+		});
+		const jobs = createJobs({ driver, consumers: c.list });
+		const client = await pgPool().connect();
+		try {
+			await client.query("begin");
+			await jobs.enqueue("notes.created", { noteId: "later" }, { executor: client, delayMs: 300 });
+			await jobs.enqueue("notes.created", { noteId: "now" }, { executor: client });
+			await client.query("commit");
+		} finally {
+			client.release();
+		}
+		const started = Date.now();
+		await driver.drain();
+		expect(Date.now() - started).toBeGreaterThanOrEqual(250);
+		expect(c.seen.map((s) => s.data)).toEqual([{ noteId: "now" }, { noteId: "later" }]);
+		await driver.drain();
+		expect(c.seen).toHaveLength(2);
+	});
+});
+
+describe.skipIf(!REDIS_URL)("the bullmq driver's retention", { timeout: 30_000 }, () => {
+	it("keeps as many finished jobs as the queue is told to", async () => {
+		const redis = new Redis(REDIS_URL as string, { maxRetriesPerRequest: null });
+		closers.push(() => redis.quit());
+		const counts: Record<string, number> = {};
+		for (const [label, removeOnComplete] of [
+			["kept", false],
+			["removed", true],
+		] as const) {
+			const c = consumers();
+			const name = `t-${randomUUID()}`;
+			const driver = bullmqDriver({
+				name,
+				prefix: "tatara-test",
+				redis: () => redis,
+				removeOnComplete,
+			});
+			const stop = await startWorker({ driver, consumers: c.list, concurrency: 1, logger });
+			onTestFinished(stop);
+			await createJobs({ driver, consumers: c.list }).enqueue("notes.created", { noteId: label });
+			await until(() => c.seen.length === 1);
+			await wait(100);
+			const queue = new Queue(name, { connection: redis, prefix: "tatara-test" });
+			counts[label] = await queue.getCompletedCount();
+			await queue.close();
+		}
+		expect(counts).toEqual({ kept: 1, removed: 0 });
 	});
 });
 

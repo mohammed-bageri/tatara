@@ -1,10 +1,15 @@
 import type { CoreLogger } from "@tatara/core";
 import type { ConsumerDefinition, JobEnvelope } from "./define.ts";
 import type { JobDriver } from "./driver.ts";
+import { type JobOutboxOptions, jobOutbox } from "./outbox.ts";
+import type { Queryable } from "./postgres.ts";
 import { type JobHandler, jobHandler } from "./runner.ts";
 
 export interface InlineDriver extends JobDriver {
-	/** resolves once every job sent so far, and every retry, has finished */
+	/**
+	 * Resolves once every job sent so far, and every retry, has finished; with an `outbox`, also the
+	 * jobs of transactions that have committed.
+	 */
 	drain(): Promise<void>;
 	/** jobs that ended dead, newest last */
 	readonly dead: JobEnvelope[];
@@ -19,6 +24,13 @@ export function inlineDriver(options: {
 	consumers: readonly ConsumerDefinition[] | (() => Promise<readonly ConsumerDefinition[]>);
 	logger: CoreLogger;
 	retryDelay?: (delayMs: number) => number;
+	/**
+	 * Jobs enqueued with an `executor` wait in this outbox until their transaction commits (see
+	 * `jobOutbox`). Without one they run right away, committed or not.
+	 */
+	outbox?: JobOutboxOptions;
+	/** the outbox rows this driver forwards (default "default"); two inline drivers on one database need two */
+	name?: string;
 }): InlineDriver {
 	let handler: Promise<JobHandler> | undefined;
 	const handle = async (job: JobEnvelope) => {
@@ -49,11 +61,17 @@ export function inlineDriver(options: {
 		pending.add(run);
 		void run.then(() => pending.delete(run));
 	};
+	const outbox = options.outbox
+		? jobOutbox(options.outbox, `inline:${options.name ?? "default"}`, async (jobs) => {
+				for (const { job, delayMs } of jobs) schedule(job, delayMs);
+			})
+		: undefined;
 
 	return {
 		name: "inline",
 		dead,
-		async send(jobs) {
+		async send(jobs, executor) {
+			if (executor !== undefined && outbox) return outbox.write(jobs, executor as Queryable);
 			for (const { job, delayMs } of jobs) schedule(job, delayMs);
 		},
 		async consume() {
@@ -61,7 +79,11 @@ export function inlineDriver(options: {
 			return async () => {};
 		},
 		async drain() {
-			while (pending.size > 0) await Promise.all([...pending]);
+			for (;;) {
+				const forwarded = outbox ? await outbox.forward() : 0;
+				if (forwarded === 0 && pending.size === 0) return;
+				while (pending.size > 0) await Promise.all([...pending]);
+			}
 		},
 	};
 }
