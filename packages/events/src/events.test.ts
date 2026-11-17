@@ -317,6 +317,47 @@ describe("events.transaction", () => {
 		expect(ran).toEqual(["first", "after a failure"]);
 	});
 
+	it("flush() waits for the post-commit publishes, including ones started while it waits", async () => {
+		const { events, published, store } = setup([]);
+		expect(await events.flush()).toBe(0);
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const slow = vi.fn(async (topic: string, data: unknown) => {
+			await gate;
+			published.push({ topic, data });
+			return "job";
+		});
+		const gated = createEvents({
+			store,
+			transaction: (fn) => store.transaction(fn),
+			events: definitions,
+			subscribers: [],
+			jobs: { enqueue: slow } as never,
+			logger,
+		});
+		await gated.transaction((tx) => gated.emit(tx, noteCreated, { payload: { noteId: "a" } }));
+		const flushed = gated.flush();
+		await gated.transaction((tx) => gated.emit(tx, noteCreated, { payload: { noteId: "b" } }));
+		await flush();
+		expect(published).toEqual([]);
+		release();
+		expect(await flushed).toBe(2);
+		expect(published).toHaveLength(2);
+		expect(store.events.every((e) => e.publishedAt !== null)).toBe(true);
+		expect(await events.flush()).toBe(0);
+	});
+
+	it("flush() settles a failed post-commit publish, leaving it to the relay", async () => {
+		const { events, jobs, store } = setup([]);
+		jobs.enqueue.mockRejectedValueOnce(new Error("broker down"));
+		await events.transaction((tx) => events.emit(tx, noteCreated, { payload: { noteId: "n" } }));
+		expect(await events.flush()).toBe(1);
+		expect(store.events[0]?.publishedAt).toBeNull();
+		expect(await events.relay()).toBe(1);
+	});
+
 	it("needs a transaction opener", async () => {
 		const { events } = setup([], { transaction: undefined });
 		await expect(events.transaction(async () => 1)).rejects.toThrow(/needs `transaction`/);

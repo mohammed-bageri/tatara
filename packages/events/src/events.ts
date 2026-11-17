@@ -300,14 +300,33 @@ export function createEvents<
 		});
 	}
 
+	// post-commit publishes in flight: `transaction` doesn't wait for them, `flush` does
+	const publishing = new Set<Promise<void>>();
+	let started = 0;
+
 	function publishAfterCommit(ids: string[]): void {
 		if (!fastPathEnabled()) {
 			logger.debug({ count: ids.length }, "post-commit publish paused; the relay sweep publishes");
 			return;
 		}
-		void relay({ ids }).catch((err: unknown) =>
-			logger.error({ err, count: ids.length }, "post-commit event publish failed"),
+		const publish = relay({ ids }).then(
+			() => {},
+			(err: unknown) =>
+				logger.error({ err, count: ids.length }, "post-commit event publish failed"),
 		);
+		started++;
+		publishing.add(publish);
+		void publish.finally(() => publishing.delete(publish));
+	}
+
+	/**
+	 * Resolves once every post-commit publish started so far, and any started meanwhile, has
+	 * settled; returns how many it waited on. Events whose publish failed are left to the relay sweep.
+	 */
+	async function flush(): Promise<number> {
+		const from = started - publishing.size;
+		while (publishing.size > 0) await Promise.all([...publishing]);
+		return started - from;
 	}
 
 	async function transaction<T>(fn: (tx: Executor) => Promise<T>): Promise<T> {
@@ -549,6 +568,7 @@ export function createEvents<
 		reconcile,
 		prune,
 		requeueDead,
+		flush,
 		fastPathEnabled,
 		subscribers,
 		definition: (name: string) => definitions.get(name),
