@@ -254,9 +254,10 @@ export const jobs: Feature = {
   The consumer validates the payload; a payload that never validates goes straight to dead.
   Handlers must be idempotent: a failure retries with doubling backoff, and \`onDeadLetter\` runs once,
   after the last attempt.
-- \`JOBS_DRIVER\` picks where jobs wait: \`bullmq\` (Redis, default), \`postgres\` (a \`tatara.jobs\` table;
-  pass \`{ executor: inTransaction(tx) }\` and the job commits with your writes, a transactional
-  outbox), \`kafka\`, or \`inline\` (tests: \`(jobs.driver as InlineDriver).drain()\`).
+- \`JOBS_DRIVER\` picks where jobs wait: \`bullmq\` (Redis, default), \`postgres\` (a \`tatara.jobs\` table),
+  \`kafka\`, or \`inline\` (tests: \`(jobs.driver as InlineDriver).drain()\`). With Postgres, pass
+  \`{ executor: inTransaction(tx) }\` and the job exists only if your writes commit, whatever the driver
+  (the others wait in a \`tatara.job_outbox\` row until commit).
 - Recurring work: \`schedules/<name>.ts\` (\`defineSchedule({ name, cron, run })\`); \`run({ forEachOrg })\`
   visits every org, one failure at a time. A lock (the cache) makes each tick run once however it
   was started: \`apps/cron\`, \`tatara run schedule:run --name <name>\`, or
@@ -399,6 +400,8 @@ export const events: Feature = {
   aggregateId, actor })\` from \`#modules/events/services/events\`. Inside \`events.transaction(fn)\` the event is
   published right after commit; in a plain \`db.transaction\` the relay schedule picks it up within
   seconds. A rollback leaves no event. \`events.afterCommit(hook)\` runs work after commit only.
+  \`events.transaction\` doesn't wait for the publish: in tests, \`deliverEvents({ events, drain })\` from
+  \`@tatara/testing\` runs every subscriber, and what they emit, before you assert.
 - Delivery is at-least-once, one delivery per (event, subscriber), retried alone with backoff and
   dead after 8 attempts, with no ordering: **subscribers must be idempotent per \`event.id\`**.
 - Payloads are validated at emit; keep secrets and free text out of them. Bump \`version\` for a
@@ -861,6 +864,8 @@ export const realtime: Feature = {
   events: { "answer.created": schema }, permission?, feature?, authorize?(who, params) })\`. Clients
   \`emit("subscribe", name)\` and get \`{ ok, channel, code? }\`; publish with
   \`publishTo(channel, { orgId, params, event, payload })\` (typed; a bad payload is logged and dropped).
+  \`unsubscribeUser(channel, { orgId, userId, params })\` takes one user out of one channel from any
+  process (e.g. they left the team); a later subscribe is checked again.
 - With notifications, every inbox entry is also pushed as \`notification.created\`.
 `,
 		},
