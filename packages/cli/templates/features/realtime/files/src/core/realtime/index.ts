@@ -26,4 +26,4 @@ export const realtime = createRealtime({
 	logger,
 });
 
-export const { publishToUser, publishToOrg, publishTo, disconnectUser, disconnectOrg } = realtime;
+export const { publishToUser, publishToOrg, publishTo, unsubscribeUser, disconnectUser, disconnectOrg } = realtime;

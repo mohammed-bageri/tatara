@@ -470,6 +470,12 @@ importers:
 
   packages/testing:
     devDependencies:
+      '@tatara/core':
+        specifier: workspace:^
+        version: link:../core
+      '@tatara/events':
+        specifier: workspace:^
+        version: link:../events
       '@tatara/http':
         specifier: workspace:^
         version: link:../http
@@ -485,6 +491,12 @@ importers:
       pg:
         specifier: ^8.23.1
         version: 8.23.1
+      pino:
+        specifier: ^10.4.0
+        version: 10.4.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
 packages:
 

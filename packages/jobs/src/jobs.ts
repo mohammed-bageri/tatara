@@ -14,7 +14,10 @@ export interface EnqueueOptions {
 	requestId?: string | null;
 	/** wait this long before the first run */
 	delayMs?: number;
-	/** the caller's transaction: with the Postgres driver the job commits (or not) with it */
+	/**
+	 * The caller's transaction (`inTransaction(tx)`): the job exists only if it commits. The Postgres
+	 * driver writes it in its table; BullMQ, Kafka and inline need an `outbox` to.
+	 */
 	executor?: unknown;
 }
 

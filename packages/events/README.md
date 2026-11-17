@@ -86,6 +86,9 @@ await events.transaction(async (tx) => {
   `emitMany` writes many of one definition (1,000 rows per insert).
 - Inside `events.transaction` the events are published right after commit. In a plain
   transaction the `events-relay` schedule publishes them within seconds.
+- `transaction` returns without waiting for that publish. `flush()` resolves once every post-commit
+  publish in flight has settled, and returns how many it waited on; tests use it (or
+  `deliverEvents` from `@tatara/testing`) before draining jobs.
 - `cause: causedBy(event)` records causation, correlation and `depth` for chains.
 - `relay()`, `dispatch(eventId)`, `retry()`, `reconcile()`, `prune()`, `requeueDead(filter)`.
 - `events.consumer` (the `events.dispatch` job) and `events.schedules.{relay, retry, reconcile,

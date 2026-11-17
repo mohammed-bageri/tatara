@@ -7,6 +7,9 @@ socket bound to its user and org. Every socket joins its user's and org's rooms;
 (`defineChannel`) add rooms a client subscribes to. `publishToUser`, `publishToOrg` and
 `publishTo(channel)` work from any process (through Redis) and never throw, and
 `disconnectUser` / `disconnectOrg` close sockets when access changes.
+`unsubscribeUser(channel, { orgId, userId, params })` takes one user's sockets out of one channel
+on every api process (e.g. a member who left a team) and leaves their other subscriptions alone; a
+later `subscribe` from the same socket is checked and joins again. The client is not told.
 
 Wire format:
 

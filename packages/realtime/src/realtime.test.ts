@@ -328,6 +328,81 @@ describe("realtime", () => {
 		});
 	});
 
+	it("unsubscribes one user from one channel server-side, and a later subscribe joins again", async () => {
+		const served = await serve();
+		const { realtime } = served;
+		const leaving = await socketOf(served, { userId: "u1", orgId: "o1" });
+		const staying = await socketOf(served, { userId: "u2", orgId: "o1" });
+		for (const socket of [leaving, staying])
+			for (const channel of ["survey.s1", "survey.s2"])
+				expect(await socket.emitWithAck("subscribe", channel)).toMatchObject({ ok: true });
+		const seen: string[] = [];
+		leaving.on("rt", (e: RealtimeEnvelope) => seen.push(e.ch));
+		const answer = (surveyId: string) =>
+			realtime.publishTo(survey, {
+				orgId: "o1",
+				params: { surveyId },
+				event: "answer.created",
+				payload: { answerId: surveyId },
+			});
+
+		await realtime.unsubscribeUser(survey, {
+			orgId: "o1",
+			userId: "u1",
+			params: { surveyId: "s1" },
+		});
+		const stayingGot = next(staying, "answer.created");
+		await answer("s1");
+		expect(await stayingGot).toEqual({ answerId: "s1" });
+		await answer("s2");
+		await settle();
+		expect(seen).toEqual(["survey.s2"]);
+
+		// the same socket, no reconnect: the subscribe joins the room again
+		expect(await leaving.emitWithAck("subscribe", "survey.s1")).toEqual({
+			ok: true,
+			channel: "survey.s1",
+		});
+		const again = next(leaving, "answer.created");
+		await answer("s1");
+		expect(await again).toEqual({ answerId: "s1" });
+	});
+
+	it("frees the subscription cap when a user is unsubscribed server-side", async () => {
+		const served = await serve({ maxSubscriptionsPerSocket: 1 });
+		const socket = await socketOf(served, { userId: "u1", orgId: "o1" });
+		await socket.emitWithAck("subscribe", "survey.s1");
+		await served.realtime.unsubscribeUser(survey, {
+			orgId: "o1",
+			userId: "u1",
+			params: { surveyId: "s1" },
+		});
+		expect(await socket.emitWithAck("subscribe", "survey.s2")).toEqual({
+			ok: true,
+			channel: "survey.s2",
+		});
+	});
+
+	it("logs a server-side unsubscribe with a bad param, never throwing", async () => {
+		const { logged, logger: captured } = capturingLogger();
+		const served = await serve({ logger: captured });
+		await expect(
+			served.realtime.unsubscribeUser(survey, {
+				orgId: "o1",
+				userId: "u1",
+				params: { surveyId: "s.1" },
+			}),
+		).resolves.toBeUndefined();
+		await expect(
+			served.realtime.unsubscribeUser(survey, {
+				orgId: "o1",
+				userId: "",
+				params: { surveyId: "s1" },
+			}),
+		).resolves.toBeUndefined();
+		expect(logged.filter((l) => l.msg === "realtime unsubscribe rejected")).toHaveLength(2);
+	});
+
 	it("logs and drops a publish with a bad param, event or payload, never throwing", async () => {
 		const { logged, logger: captured } = capturingLogger();
 		const served = await serve({ logger: captured });
@@ -987,5 +1062,54 @@ describe.skipIf(!REDIS_URL)("realtime across processes (Redis)", { timeout: 20_0
 		expect(
 			await Promise.race([got, new Promise((r) => setTimeout(() => r("lost"), 3000))]),
 		).toEqual({ last: true });
+	});
+
+	it("unsubscribes a user on every api process from a worker, and a later subscribe joins again", async () => {
+		const tickets = memoryTickets();
+		const redis = () => {
+			const client = new Redis(REDIS_URL as string);
+			cleanups.push(() => client.quit().catch(() => {}));
+			return client;
+		};
+		const a = await serve({ adapter: { kind: "redis", redis }, tickets });
+		const b = await serve({ adapter: { kind: "redis", redis }, tickets });
+		const who = { userId: "u7", orgId: "o7" };
+		const onA = await socketFor(a.url, (await a.realtime.issueTicket(who)).ticket);
+		const onB = await socketFor(b.url, (await b.realtime.issueTicket(who)).ticket);
+		for (const socket of [onA, onB])
+			expect(await socket.emitWithAck("subscribe", "survey.s7")).toMatchObject({ ok: true });
+		const seen: string[] = [];
+		for (const socket of [onA, onB]) socket.on("rt", (e: RealtimeEnvelope) => seen.push(e.ch));
+		const worker = createRealtime({
+			driver: "socketio",
+			adapter: { kind: "redis", redis },
+			tickets,
+			allowOrigin: () => true,
+			logger,
+		});
+		cleanups.push(() => worker.close());
+		await new Promise((r) => setTimeout(r, 300));
+		const answer = () =>
+			worker.publishTo(survey, {
+				orgId: "o7",
+				params: { surveyId: "s7" },
+				event: "answer.created",
+				payload: { answerId: "a7" },
+			});
+
+		await worker.unsubscribeUser(survey, { ...who, params: { surveyId: "s7" } });
+		await settle();
+		await answer();
+		await settle();
+		expect(seen).toEqual([]);
+
+		for (const socket of [onA, onB])
+			expect(await socket.emitWithAck("subscribe", "survey.s7")).toEqual({
+				ok: true,
+				channel: "survey.s7",
+			});
+		const both = Promise.all([next(onA, "answer.created"), next(onB, "answer.created")]);
+		await answer();
+		expect(await both).toEqual([{ answerId: "a7" }, { answerId: "a7" }]);
 	});
 });

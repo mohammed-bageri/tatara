@@ -36,11 +36,15 @@
 		}
 	},
 	"devDependencies": {
+		"@tatara/core": "workspace:^",
+		"@tatara/events": "workspace:^",
 		"@tatara/http": "workspace:^",
 		"@types/pg": "8.23.1",
 		"hono": "^4.13.13",
 		"ioredis": "^6.0.0",
-		"pg": "^8.23.1"
+		"pg": "^8.23.1",
+		"pino": "^10.4.0",
+		"zod": "^4.6.7"
 	},
 	"publishConfig": {
 		"access": "public"

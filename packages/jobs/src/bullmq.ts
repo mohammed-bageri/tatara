@@ -1,8 +1,10 @@
 import { onShutdown } from "@tatara/core";
-import { Queue, Worker } from "bullmq";
+import { type JobsOptions, Queue, Worker } from "bullmq";
 import type { Redis } from "ioredis";
 import type { JobEnvelope } from "./define.ts";
 import type { JobDriver, Outgoing } from "./driver.ts";
+import { type JobOutboxOptions, jobOutbox, TRANSACTION_ERROR } from "./outbox.ts";
+import type { Queryable } from "./postgres.ts";
 
 export interface BullmqDriverOptions {
 	/** queue name; dead jobs go to `<name>-dead`, kept for inspection (e.g. in a Bull Board) */
@@ -10,12 +12,20 @@ export interface BullmqDriverOptions {
 	prefix: string;
 	/** BullMQ needs maxRetriesPerRequest: null; `lazyRedis` gives one */
 	redis: () => Redis;
+	/** finished jobs BullMQ keeps in the queue: a count, `{ age, count }`, or true/false (default 1000) */
+	removeOnComplete?: JobsOptions["removeOnComplete"];
+	/** failed attempts it keeps (default 5000); dead jobs stay in `<name>-dead` regardless */
+	removeOnFail?: JobsOptions["removeOnFail"];
+	/** lets `enqueue(…, { executor: inTransaction(tx) })` work: see `jobOutbox` */
+	outbox?: JobOutboxOptions;
 }
-
-const KEEP = { removeOnComplete: 1000, removeOnFail: 5000 };
 
 /** Jobs in Redis through BullMQ. Each attempt is its own BullMQ job, so retries keep the envelope. */
 export function bullmqDriver(options: BullmqDriverOptions): JobDriver {
+	const keep = {
+		removeOnComplete: options.removeOnComplete ?? 1000,
+		removeOnFail: options.removeOnFail ?? 5000,
+	};
 	const queues = new Map<string, Queue>();
 	const queue = (name: string) => {
 		let q = queues.get(name);
@@ -33,17 +43,22 @@ export function bullmqDriver(options: BullmqDriverOptions): JobDriver {
 				name: job.topic,
 				data: job,
 				// "-" because BullMQ ids may not contain ":"
-				opts: { jobId: `${job.id}-${job.attempt}`, delay: delayMs, attempts: 1, ...KEEP },
+				opts: { jobId: `${job.id}-${job.attempt}`, delay: delayMs, attempts: 1, ...keep },
 			})),
 		);
+
+	const outbox = options.outbox
+		? jobOutbox(options.outbox, `bullmq:${options.prefix}:${options.name}`, async (jobs) => {
+				await add(options.name, jobs);
+			})
+		: undefined;
 
 	return {
 		name: "bullmq",
 		async send(jobs, executor) {
 			if (executor !== undefined) {
-				throw new Error(
-					"BullMQ driver can't enqueue inside a transaction; use the Postgres driver or enqueue after commit",
-				);
+				if (!outbox) throw new Error(`BullMQ driver ${TRANSACTION_ERROR}`);
+				return outbox.write(jobs, executor as Queryable);
 			}
 			await add(options.name, jobs);
 		},
@@ -67,7 +82,11 @@ export function bullmqDriver(options: BullmqDriverOptions): JobDriver {
 				{ connection: options.redis(), prefix: options.prefix, concurrency },
 			);
 			worker.on("error", (err) => logger.error({ err }, "worker error"));
-			return () => worker.close();
+			const stopOutbox = outbox?.run();
+			return async () => {
+				await stopOutbox?.();
+				await worker.close();
+			};
 		},
 	};
 }

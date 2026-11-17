@@ -16,6 +16,7 @@ export {
 	type WorkerDatabaseOptions,
 	workerDatabaseUrl,
 } from "./databases.ts";
+export { type DeliverableEvents, type DeliverEventsOptions, deliverEvents } from "./events.ts";
 export {
 	type ErrorBody,
 	jsonErr,

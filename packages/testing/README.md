@@ -78,3 +78,14 @@ const err = await jsonErr(res); // { success: false, error, code, details? }
 
 The `json*` helpers take a `Response` or a `client()` result, check the shape `@tatara/http`
 sends, and throw with the status and body when it differs.
+
+## Delivering domain events
+
+```ts
+afterEach(() => deliverEvents({ events, drain: () => (jobs.driver as InlineDriver).drain() }));
+```
+
+`deliverEvents({ events, drain?, maxRounds? })` runs every committed `@tatara/events` event's
+subscribers, and the events they emit in turn: it drains the jobs, waits for post-commit publishes
+(`events.flush()`), relays what they missed, and stops after a round that finds nothing. It throws
+after `maxRounds` (50).

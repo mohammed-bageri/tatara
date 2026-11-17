@@ -86,12 +86,15 @@ export interface RealtimeHealth {
 
 type Emitter = {
 	to(room: string): { emit(event: string, payload: unknown): unknown };
-	in(room: string): { disconnectSockets(close?: boolean): unknown };
+	in(room: string): {
+		disconnectSockets(close?: boolean): unknown;
+		socketsLeave(rooms: string | string[]): unknown;
+	};
 };
 
 const NOOP: Emitter = {
 	to: () => ({ emit: () => true }),
-	in: () => ({ disconnectSockets: () => undefined }),
+	in: () => ({ disconnectSockets: () => undefined, socketsLeave: () => undefined }),
 };
 
 /** `live` is false when the event goes nowhere (noop, closed, or detached without Redis). */
@@ -391,6 +394,10 @@ export function createRealtime(options: RealtimeOptions) {
 				socket.on("disconnect", () => clearTimeout(expire));
 			}
 			const joined = new Map<string, string>();
+			// unsubscribeUser takes the socket out of a room from any process; forget those channels
+			const forgetLeft = () => {
+				for (const [name, room] of joined) if (!socket.rooms.has(room)) joined.delete(name);
+			};
 			// subscriptions being authorized count toward the cap, so a burst can't pass it
 			let pending = 0;
 			socket.on("subscribe", async (channel: unknown, ack?: (r: SubscribeAck) => void) => {
@@ -398,6 +405,7 @@ export function createRealtime(options: RealtimeOptions) {
 					metrics.subscribed(r.ok ? "allowed" : (r.code ?? "FORBIDDEN"));
 					if (typeof ack === "function") ack(r);
 				};
+				forgetLeft();
 				const name = typeof channel === "string" ? channel : "";
 				if (!name) return reply({ ok: false, channel: "", code: "CHANNEL_INVALID" });
 				if (joined.has(name)) return reply({ ok: true, channel: name });
@@ -412,6 +420,7 @@ export function createRealtime(options: RealtimeOptions) {
 				}
 				if (!decision.ok) return reply({ ok: false, channel: name, code: decision.code });
 				if (!socket.connected) return;
+				forgetLeft();
 				if (!joined.has(name)) {
 					joined.set(name, decision.room);
 					await socket.join(decision.room);
@@ -533,6 +542,30 @@ export function createRealtime(options: RealtimeOptions) {
 				name,
 				input.event,
 				payload,
+			);
+		},
+		/**
+		 * Takes the user's sockets in the org out of one channel, on every api process, leaving their
+		 * other subscriptions alone (e.g. a member who left a team). A later subscribe is checked again.
+		 * The client is not told. Never throws: a bad param is logged and nothing happens.
+		 */
+		async unsubscribeUser<P extends string, E extends Record<string, z.ZodType>>(
+			channel: ChannelDefinition<P, E>,
+			input: { orgId: string; userId: string; params: ChannelParams<NoInfer<P>> },
+		): Promise<void> {
+			const context = { channel: channel.name, orgId: input.orgId, userId: input.userId };
+			let room: string;
+			try {
+				if (!input.orgId || !input.userId) throw new Error("orgId and userId are required");
+				const name = channelName(channel.name, (input.params ?? {}) as Record<string, string>);
+				room = channelRoom(input.orgId, channel.name, name);
+			} catch (err) {
+				log.error({ err, ...context }, "realtime unsubscribe rejected");
+				return;
+			}
+			await send(
+				(e) => e.in(userRoom({ orgId: input.orgId, userId: input.userId })).socketsLeave(room),
+				context,
 			);
 		},
 		/** closes the user's sockets in the org after `rt:closed { reason }`; the client reconnects */
